@@ -1,0 +1,13 @@
+{
+  "id": "mm3e-better-attacks",
+  "title": "Better Attacks For Mutants and Masterminds 3E",
+  "description": "Template targeting, converting powers to attacks, and Automated Animation support For Mutants and Masterminds 3E (Works in english only)",
+  "authors": [
+    {
+    "name": "Spider-Monkey"
+    }
+  ],
+"scripts": [
+  "scripts/initialize.js"
+]
+	}

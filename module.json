@@ -2,12 +2,41 @@
   "id": "mm3e-better-attacks",
   "title": "Better Attacks For Mutants and Masterminds 3E",
   "description": "Template targeting, converting powers to attacks, and Automated Animation support For Mutants and Masterminds 3E (Works in english only)",
+  "version":"1.1.1",
   "authors": [
     {
-    "name": "Spider-Monkey"
+    "name": "Spider-Code-Monkey"
     }
   ],
-"scripts": [
-  "scripts/initialize.js"
-]
+	"url": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks",
+    "scripts": [
+		"scripts/initialize.js"
+	],
+	  "compatibility": {
+        "minimum": "10",
+        "verified": "11"
+    },
+	"relationships": {
+		"systems": [
+			{
+				"id": "mutants-and-masterminds-3e",
+				"type": "system",
+				"compatibility": {
+					"minimum": "1.30.2"
+				}
+			}
+		],
+		"requires": [
+            {
+                "manifest": "https://github.com/otigon/automated-jb2a-animations/releases/latest/download/module.json",
+                "id": "autoanimations",
+                "type": "module",
+                "compatibility": {
+                    "minimum": "4.2.15"
+                }
+            }
+        ]	
 	}
+		
+	
+}

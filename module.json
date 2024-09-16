@@ -22,7 +22,7 @@
                 "id": "mutants-and-masterminds-3e",
                 "type": "system",
                 "compatibility": {
-                    "minimum": "1.30.2"
+                    "minimum": "1.35.3"
                 }
             }
         ],

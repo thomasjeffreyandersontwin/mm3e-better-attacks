@@ -2,11 +2,7 @@
     "id": "mm3e-better-attacks",
     "title": "Better Attacks For Mutants and Masterminds 3E",
     "description": "Template targeting, converting powers to attacks, and Automated Animation support For Mutants and Masterminds 3E (Works in english only)",
-<<<<<<< HEAD
     "version": "0.0.3",
-=======
-    "version": "1.1.1",
->>>>>>> 0706f3e193b8190eda82510324676b6181e71c6d
     "authors": [
         {
             "name": "Spider-Code-Monkey"
@@ -16,11 +12,7 @@
     "scripts": [
         "scripts/better-attacks.js"
     ],
-<<<<<<< HEAD
     "compatibility": { 
-=======
-    "compatibility": {
->>>>>>> 0706f3e193b8190eda82510324676b6181e71c6d
         "minimum": "10",
         "verified": "11"
     },
@@ -45,11 +37,6 @@
             }
         ]
     },
-    "manifest": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks/releases/download/0.0.2/module.json",
-<<<<<<< HEAD
-    "download": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks/releases/download/0.0.2.zip"
-}
-=======
+    "manifest": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks/releases/latest/download/module.json",
     "download": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks/archive/refs/tags/0.0.2.zip"
 }
->>>>>>> 0706f3e193b8190eda82510324676b6181e71c6d

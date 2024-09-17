@@ -1,4 +1,9 @@
+Hooks.on("init", () => {
+	CONFIG.Token.objectClass = TokenMM3;
+	CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
+})
 Hooks.on('ready', () => {
+	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
   Hooks.on('rollAttack', async (atk, token,strategie, altKey) => {
       console.log("hooking into attack  " + atk);
@@ -179,7 +184,7 @@ async function createPowerTemplate(token, attaque) {
     } else {
         distance = 3;
     }
-    let templateDistance = distance//* .75;
+    let templateDistance = distance * 1.4;
     let warpDistance = distance * 2;
 
     let range = GetRangeForPower(token, attaque)
@@ -187,21 +192,18 @@ async function createPowerTemplate(token, attaque) {
     let t = "circle";
     if (range == "Line") {
         t = "ray"
-        warpDistance = warpDistance / 2;
-        templateDistance = templateDistance / 2;
+        warpDistance = warpDistance;
+        templateDistance = templateDistance ;
     }
     if (range == "Cone") {
         t = "cone"
         templateDistance = distance * 1.5;
         warpDistance = distance * 2;
-        //* 5; //22;
         // templateDistance= distance// * 3;
     }
     if (range == "Burst") {
         t = "circle"
         templateDistance = templateDistance //* 1.25;
-        //9;
-        warpDistance = warpDistance;
     }
 
     let width = undefined
@@ -209,11 +211,11 @@ async function createPowerTemplate(token, attaque) {
         width = 2;
     }
     let config = {
-        size: warpDistance,
+        size: warpDistance * canvas.scene.grid.size / 100,
         icon: 'modules/jb2a_patreon/Library/1st_Level/Grease/Grease_Dark_Brown_Thumb.webp',
         label: 'Grease',
         tag: 'slimy',
-        width: width * 2,
+        width: width ,
         t: t,
         drawIcon: true,
         drawOutline: true,
@@ -225,7 +227,7 @@ async function createPowerTemplate(token, attaque) {
     if (position) {
         const templateData = {
             t: t,
-            distance: templateDistance * 4,
+            distance: templateDistance * canvas.scene.grid.size / 100 ,
             x: position.x,
             width: width,
             y: position.y,
@@ -322,7 +324,7 @@ function findTokensUnderTemplate(template) {
         );
     } else if (template.t === "rectangle") {
         const left = template.x - ((template.width / 2) * canvas.scene.data.grid.size);
-        const top = template.y - ((template.height / 2) * canvas.scene.data.grid.size);
+        const top = template.y - ((template.height / 2) * canvas.scene.data.grid.size) ;
         const right = template.x + ((template.width / 2) * canvas.scene.data.grid.size);
         const bottom = template.y + ((template.width / 2) * canvas.scene.data.grid.size)
         targetedTokens = tokens.filter(token => {
@@ -336,10 +338,10 @@ function findTokensUnderTemplate(template) {
     } else if (template.t === "cone") {
         targetedTokens = tokens.filter(token => {
             const angle = Math.atan2(token.y - template.y, token.x - template.x) - toRadians(template.direction);
-            const distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
+            let distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
             const coneAngle = toRadians(90);
             // Assuming a 90-degree cone angle for simplicity
-            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= template.distance * canvas.scene.data.grid.size;
+            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.data.grid.size;
         }
         );
     } else if (template.t === "ray") {
@@ -349,8 +351,8 @@ function findTokensUnderTemplate(template) {
                 y: token.center.y
             };
             const rayEndPoint = {
-                x: template.x + Math.cos(toRadians(template.direction)) * (template.distance * canvas.scene.data.grid.size),
-                y: template.y + Math.sin(toRadians(template.direction)) * (template.distance * canvas.scene.data.grid.size),
+                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.data.grid.size),
+                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.data.grid.size),
             };
             const templateWidthInPixels = canvas.scene.data.grid.size * (template.width / 2);
 
@@ -950,6 +952,5 @@ if (existingAttackKey) {
 
 game.actors.set(actor._id , actor)
 
-}
-
+} 
 

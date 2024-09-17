@@ -187,6 +187,8 @@ async function createPowerTemplate(token, attaque) {
     let templateDistance = distance * 1.4;
     let warpDistance = distance * 2;
 
+
+    
     let range = GetRangeForPower(token, attaque)
 
     let t = "circle";
@@ -953,73 +955,4 @@ if (existingAttackKey) {
 game.actors.set(actor._id , actor)
 
 } 
-
-class MeasuredTemplateMM3 extends MeasuredTemplate {
-	/**
-	 * Get tokens that occupy squares highlighted by the template.
-	 *
-	 * @returns {Token[]} Array of tokens
-	 */
-	getTokensWithin() {
-		/** @type {[id: string]: Set<Point>} */
-		const tokens = Object.fromEntries(
-			canvas.tokens.placeables.map((token) => {
-				const positions = token.getPositions().map(({ x, y }) => `${x},${y}`);
-				return [token.id, new Set(positions)];
-			}),
-		);
-		const highlightPositions = canvas.interface.grid.getHighlightLayer(this.highlightId).positions;
-		const containedIds = Object.entries(tokens).reduce((acc, [id, tokenPositions]) => {
-			const intersection = highlightPositions.intersection(tokenPositions);
-			if (intersection.size > 0) acc.push(id);
-			return acc;
-		}, []);
-		return containedIds.map((id) => canvas.tokens.get(id));
-	}
-}
-
-class TokenMM3 extends Token {
-	/**
-	 * Get an array of positions of grid spaces this token occupies.
-	 *
-	 * @returns {Point[]}
-	 */
-	getPositions() {
-		// TODO: Refactor and shorten
-		const grid = canvas.grid;
-		const { x: ox, y: oy } = this.document;
-		const shape = this.shape;
-		const bounds = shape.getBounds();
-		bounds.x += ox;
-		bounds.y += oy;
-		bounds.fit(canvas.dimensions.rect);
-
-		// Identify grid space that have their center points covered by the template shape
-		const positions = [];
-		const [i0, j0, i1, j1] = grid.getOffsetRange(bounds);
-		for (let i = i0; i < i1; i++) {
-			for (let j = j0; j < j1; j++) {
-				const offset = { i, j };
-				const { x: cx, y: cy } = grid.getCenterPoint(offset);
-
-				// If the origin of the template is a grid space center, this grid space is highlighted
-				let covered = Math.max(Math.abs(cx - ox), Math.abs(cy - oy)) < 1;
-				if (!covered) {
-					for (let dx = -0.5; dx <= 0.5; dx += 0.5) {
-						for (let dy = -0.5; dy <= 0.5; dy += 0.5) {
-							if (shape.contains(cx - ox + dx, cy - oy + dy)) {
-								covered = true;
-								break;
-							}
-						}
-					}
-				}
-				if (!covered) continue;
-				positions.push(grid.getTopLeftPoint(offset));
-			}
-		}
-		return positions;
-	}
-}
-
 

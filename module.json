@@ -10,7 +10,8 @@
     ],
     "url": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks",
     "scripts": [
-        "scripts/better-attacks.js"
+        "scripts/better-attacks.js",
+		"scripts/warpgate.js"
     ],
     "compatibility": { 
         "minimum": "10",

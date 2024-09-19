@@ -187,8 +187,6 @@ async function createPowerTemplate(token, attaque) {
     let templateDistance = distance * 1.4;
     let warpDistance = distance * 2;
 
-
-    
     let range = GetRangeForPower(token, attaque)
 
     let t = "circle";
@@ -955,4 +953,3 @@ if (existingAttackKey) {
 game.actors.set(actor._id , actor)
 
 } 
-

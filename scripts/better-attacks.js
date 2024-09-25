@@ -1,10 +1,18 @@
 Hooks.on("init", () => {
-	CONFIG.Token.objectClass = TokenMM3;
-	CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
+	//CONFIG.Token.objectClass = TokenMM3;
+	//CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
 })
 Hooks.on('ready', () => {
 	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
+
+
+  Hooks.on('rollPower', async (atk, token,strategie, altKey) => {
+    if(game.modules.get('autoanimations')?.active) {
+      await triggerAnimationForPower(atk, token);
+    } 
+
+  })
   Hooks.on('rollAttack', async (atk, token,strategie, altKey) => {
       console.log("hooking into attack  " + atk);
       console.log("hooking for token  " + token);
@@ -46,6 +54,48 @@ Hooks.on('ready', () => {
       });
    });
 });
+
+async function triggerAnimationForPower(power, source) {
+  //try for power name first
+  let powerName = power.name;
+  let item = {
+      name: powerName,
+      type: "spell"
+  };
+
+  let options = {};
+
+  if (window.AutomatedAnimations) {
+      await window.AutomatedAnimations.playAnimation(source, item, options);
+  }
+
+  let animationEnded = false;
+  function onAnimationEnd() {
+      animationEnded = true;
+      Hooks.off("aa.animationEnd", onAnimationEnd);
+  }
+  Hooks.on("aa.animationEnd", onAnimationEnd);
+
+
+  //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
+  setTimeout( () => {
+      if (!animationEnded && power && power.system.descripteurs["1"]) {
+          
+          let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
+          let range = GetRangeForPower( power) ? GetRangeForPower(power) : "Range";
+          let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+
+          attackName = descripter + "-" + range + "-" + attackType;
+          item = {
+              name: attackName,
+              type: "spell"
+          };
+          window.AutomatedAnimations.playAnimation(source, item, options);
+      }
+  }
+  , 1000);
+  // Timeout duration in milliseconds, adjust based on expected animation duration*/
+}
          
 async function triggerAnimationForAttack(attaque, source) {
     let power = source.actor.items.get(attaque.links.pwr)
@@ -75,8 +125,8 @@ async function triggerAnimationForAttack(attaque, source) {
         if (!animationEnded && power && power.system.descripteurs["1"]) {
             
             let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
-            let range = GetRangeForPower(source.actor, attaque) ? GetRangeForPower(source.actor, attaque) : "Range";
-            let attackType = GetAttackTypeFromPower(attaque) ? GetAttackTypeFromPower(attaque) : "Damage";
+            let range = GetRangeForAttack(source.actor, attaque) ? GetRangeForAttack(source.actor, attaque) : "Range";
+            let attackType = GetAttackTypeFromAttack(attaque) ? GetAttackTypeFromAttack(attaque) : "Damage";
 
             attackName = descripter + "-" + range + "-" + attackType;
             item = {
@@ -91,7 +141,7 @@ async function triggerAnimationForAttack(attaque, source) {
 }
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
-    let range = GetRangeForPower(token, attaque)
+    let range = GetRangeForAttack(token, attaque)
     if (range === 'Cone' || range === 'Burst' || range === 'Line' || range == 'Area') {
         
         let templateOrTargets= await createPowerTemplate(token, attaque);
@@ -118,7 +168,18 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
     , (5000));
 }
 
-function GetAttackTypeFromPower(attaque) {
+function GetEffectFromPower(power) {
+  let effect = power.system.effetsprincipaux;
+ //regex to strip trailing number form effect eg: Damage 5 -> Damage
+  effect = effect.replace(/\d+/g, '');
+  if(effect=="Blast"){
+    effect="Damage";
+  }
+  return effect;
+  
+}
+
+function GetAttackTypeFromAttack(attaque) {
     let attackType = undefined;
     if (attaque.isDmg == true) {
         attackType = 'Damage';
@@ -128,7 +189,39 @@ function GetAttackTypeFromPower(attaque) {
     }
     return attackType;
 }
-function GetRangeForPower(token, attaque) {
+
+function GetRangeForPower(matchingPower) {
+  for (const key in matchingPower.system.extras) {
+      const item = matchingPower.system.extras[key];
+      if (item.name && item.name.includes("Cone")) {
+          return "Cone"
+      }
+      if (item.name && item.name.includes("Line")) {
+          return "Line"
+      }
+      if (item.name && item.name.includes("Burst")) {
+          return "Burst"
+      }
+      if(item.name && item.name.includes("Range"))
+      {
+        return "Range"
+      }
+  }
+  if(matchingPower.system.portee=="distance"){
+    return "Range"
+  }
+  if(matchingPower.system.portee=="perception"){
+    return "Range"
+  }
+  if(matchingPower.system.portee=="contact"){
+    return "Melee"
+  }
+  if(matchingPower.system.portee=="personnelle"){
+    return "Personal"
+  }
+  return "Range";
+}
+function GetRangeForAttack(token, attaque) {
   let pwr="";
   if(token.actor){
      pwr = token.actor.items.get(attaque.links.pwr) //why doesnt attaque.pwr work?
@@ -187,7 +280,7 @@ async function createPowerTemplate(token, attaque) {
     let templateDistance = distance * 1.4;
     let warpDistance = distance * 2;
 
-    let range = GetRangeForPower(token, attaque)
+    let range = GetRangeForAttack(token, attaque)
 
     let t = "circle";
     if (range == "Line") {
@@ -227,7 +320,7 @@ async function createPowerTemplate(token, attaque) {
     if (position) {
         const templateData = {
             t: t,
-            distance: templateDistance * canvas.scene.grid.size / 100 ,
+            distance: warpDistance * canvas.scene.grid.size / 100 ,
             x: position.x,
             width: width,
             y: position.y,

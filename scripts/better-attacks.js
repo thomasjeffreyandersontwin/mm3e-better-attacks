@@ -1,7 +1,7 @@
 Hooks.on("init", () => {
 	//CONFIG.Token.objectClass = TokenMM3;
 	//CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
-})
+}) 
 Hooks.on('ready', () => {
 	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
@@ -269,7 +269,18 @@ async function createPowerTemplate(token, attaque) {
                 }
                 else{
                      ui.notifications.warn("You have not specified at distance on your Area Extra of power linked to your attack. Add an extra to the linked power in the exact format of Areas (Burst or Line or Cone ) XX ft.) ");
-         
+					 if(extra.name.includes("Cone"))
+					 {
+						 distance = 60/5;
+					 }
+					if(extra.name.includes("Burst"))
+					 {
+						 distance = 30/5;
+					 }
+					 if(extra.name.includes("Burst"))
+					 {
+							 line = 30/5;
+					 }
                 }
               
             }
@@ -573,7 +584,7 @@ async function CreateAttacksFromPowers(actor = canvas.tokens.controlled[0]?.acto
       await createAttackDetailsFromPower(power,actor)
    }
       else{
-        ui.notifications.warn("ypu must specify an Effect for the power  " + power.name + "if you want to convert it\\n\\n Valid effects are Blast, Damage, Dazzle, Energy Aura, Energy Control, Magic, Mental Blast, Mind Control, Nullify, Sleep, Strike, Suffocation");
+        ui.notifications.warn("ypu must specify an Effect for the power  " + power.name + " if you want to convert it\\n\\n Valid effects are Blast, Damage, Dazzle, Energy Aura, Energy Control, Magic, Mental Blast, Mind Control, Nullify, Sleep, Strike, Suffocation");
       
       }
   }
@@ -598,7 +609,7 @@ async function createUnarmedAttack(actor){
   let unarmedCombatSkill = findSkillByLabel(actor.system.competence.combatcontact, attackName);
   if(!unarmedCombatSkill){
     attackName ="Unarmed"
-    unarmedCombatSkill = findSkillByLabel(actor.system.competence.combatcontact, attackName);
+    unarmedCombatSkill = actor.system.competence.combatcontact.list[0];
   }
   let effect = actor.system.caracteristique.force.total;
   
@@ -619,13 +630,29 @@ async function createUnarmedAttack(actor){
       }
     }
   }
-  await createAttack(actor,attackName, "combatcontact", 15, effect, 'robustesse', 20, false,true, unarmedCombatSkill)
+
+	//create a dummy matching power for the unarmed attack
+  let matchingPower = {actor:actor, _id:0, name: attackName, system: { cout: {rang: effect}}}
+  await createAttack(actor,matchingPower, "combatcontact", 15, 'damage', 20, unarmedCombatSkill)
+
+
 
 }
 let linkNextPower =false;
 
-function getSaveFromResistance(resistance)
+function getSaveFromResistance(matchingPower, resistance)
 {
+	for (const key in matchingPower.system.extras) {
+          const item =  matchingPower.system.extras[key];
+		const regex = /Alternate Resistance: ([^,]+)/;
+          if (item.name && item.name.includes("Alternate Resistance"))  {
+              const match = item.name.match(regex);
+			  if(match){
+				  resistance = match[1]
+			  }
+		  }
+			 
+    }
   if(resistance=="Toughness")
     {
       return 'robustesse';
@@ -647,94 +674,105 @@ function getSaveFromResistance(resistance)
 
 
 async function createAttackDetailsFromPower( matchingPower, actor)    { 
+  
+	
   let effectName = matchingPower.system.effetsprincipaux
   if(effectName==""){
     effectName = matchingPower.name
   }
-  let isAffliction = false;
-  let isDamage = false;
-  let basedef = 0;
- 
-  let type='combatcontact'
-
   const powersConfig = [
-    { name: "Affliction", range: "Close", resistance: "Fortitude" },
-    { name: "Blast", range: "Ranged", resistance: "Toughness" },
-    { name: "Damage", range: "Close", resistance: "Toughness" },
-    { name: "Dazzle", range: "Ranged", resistance: "Will" },
-    { name: "Energy Aura", range: "Close", resistance: "Toughness" },
-    { name: "Energy Control", range: "Ranged", resistance: "Toughness" },
-    { name: "Magic", range: "Ranged", resistance: "Toughness" },
-    { name: "Mental Blast", range: "Perception", resistance: "Will" },
-    { name: "Mind Control", range: "Perception", resistance: "Will" },
-    { name: "Nullify", range: "Ranged", resistance: "Will" },
-    { name: "Sleep", range: "Ranged", resistance: "Fortitude" },
-    { name: "Snare", range: "Ranged", resistance: "Dodge" },
-    { name: "Strike", range: "Close", resistance: "Toughness" },
-    { name: "Suffocation", range: "Ranged", resistance: "Fortitude" },
+    { name: "Affliction", range: "Close", resistance: "Fortitude" , attackType: "affliction" },
+    { name: "Blast", range: "Ranged", resistance: "Toughness" , attackType:"damage"},
+    { name: "Damage", range: "Close", resistance: "Toughness" ,attackType:"damage"},
+    { name: "Dazzle", range: "Ranged", resistance: "Will" ,attackType: "affliction"},
+    { name: "Energy Aura", range: "Close", resistance: "Toughness", attackType:"damage" },
+    { name: "Energy Control", range: "Ranged", resistance: "Toughness" ,attackType:"damage" },
+    { name: "Magic", range: "Ranged", resistance: "Toughness"  ,attackType:"damage"},
+    { name: "Mental Blast", range: "Perception", resistance: "Will", attackType:"damage" },
+    { name: "Mind Control", range: "Perception", resistance: "Will" ,attackType: "affliction"},
+    { name: "Nullify", range: "Ranged", resistance: "Will" , attackType:"other"},
+    { name: "Sleep", range: "Ranged", resistance: "Fortitude" ,attackType: "affliction"},
+    { name: "Snare", range: "Ranged", resistance: "Dodge" ,attackType: "affliction"},
+    { name: "Strike", range: "Close", resistance: "Toughness" ,attackType:"damage" },
+    { name: "Suffocation", range: "Ranged", resistance: "Fortitude" ,attackType: "affliction"},
   ];
-  
-  let combatSkill = null;
   let powerConfig = powersConfig.find(power => effectName.toLowerCase().includes(power.name.toLowerCase()));
-  let afflictions =undefined;
+  
+  
   if(powerConfig){
-    let save= getSaveFromResistance(powerConfig.resistance);
-    if(save=='robustesse')
-    {
-      isDamage = true;
-      basedef = 15;
-      if(linkNextPower==true)
+    let save= getSaveFromResistance(matchingPower, powerConfig.resistance);
+    let type = getTypeFromPower(matchingPower, powerConfig);
+
+	  let combatSkill;
+	  if(type =="combatdistance" || type =="combatcontact"){
+      combatSkill = getCombatSkill(actor, matchingPower, type )  
+	  }
+
+    let afflictions = undefined;
+	  if(powerConfig.attackType=="affliction" ){
+        afflictions  = determineAffliction(powerConfig, matchingPower)
+        save = getSaveFromResistance(matchingPower, afflictions.resistedBy);
+    }
+	let afflictionResults = afflictions?afflictions.result:null; 
+      
+    if(linkNextPower==true)
       {
-        saveLinkedAttack(actor, matchingPower);
-        return; 
-      }
-    }
-    else {
-      isAffliction = true;
-      basedef = 10;
-      afflictions = determineAffliction(powerConfig, matchingPower)
-      save = getSaveFromResistance(afflictions.resistedBy);
-      if (matchingPower.system.effets.includes("Linked to")){
-        
-        linkNextPower = true;
-        
-      }
-    }
-    let isArea = getAreaFromPower(matchingPower);
-    let isRange = getRangedFromPower(matchingPower);
-    let isPerception = getPerceptionFromPower(matchingPower)
+      saveLinkedAttack(actor, matchingPower);
+      return; 
+      } 
     
-    if(isRange ==false && powerConfig.range=="Close"){
-      type = "combatcontact"
-      combatSkill = findSkillByLabel(actor.system.competence.combatcontact, matchingPower.name);
-      if(!combatSkill){
-        if(actor.system.competence.combatcontact.list[0]!=undefined){
-             ui.notifications.warn("This character has no close combat skill o supply attack value for ranged combat power  "+ matchingPower.name );
-   
-        combatSkill =  actor.system.competence.combatcontact.list[0];
-        }
-      }
+    if (matchingPower.system.effets.includes("Linked to")){
+      linkNextPower = true;
     }
-    else if(powerConfig.range=="Ranged"  || isRange== true){
-      type = "combatdistance"
-      combatSkill = findSkillByLabel(actor.system.competence.combatdistance, matchingPower.name);
-      if(!combatSkill){
-        if(actor.system.competence.combatdistance.list[0]!=undefined){
-            ui.notifications.warn("This character has no ranged combat skills to supply attack value for ranged combat power  "+ matchingPower.name );
-    
-          combatSkill = actor.system.competence.combatdistance.list[0];
-        }
-      }
-    }
-    else if(powerConfig.range=="Perception" || isPerception){
-      type = "combatperception"
-    }
-    if(!isAffliction && !isDamage){
-      return;
-    }
-      await createAttack(actor,matchingPower.name, type, basedef, matchingPower.system.cout.rang, save, 20,isAffliction,isDamage, combatSkill,isArea, afflictions, matchingPower._id)
-    }
+
+	
+    await createAttack(actor, matchingPower, type, save, 20, powerConfig.attackType, combatSkill, afflictionResults);
+  }
 }
+
+function getTypeFromPower(matchingPower, powerConfig){
+  let isArea = getAreaFromPower(matchingPower);
+  let isRange = getRangedFromPower(matchingPower) || powerConfig.range=="Ranged" && !isArea;
+	let isClose = !getRangedFromPower(matchingPower)  && powerConfig.range=="Close" && !isArea
+  let isPerception = getPerceptionFromPower(matchingPower) || powerConfig.range=="Perception" 
+
+	 
+  if(isArea){
+    type = "area"
+  }
+  else{
+    if(isRange){
+      type= "combatdistance";
+    }
+    else{
+      if(isClose)
+      {
+        type = "combatcontact"
+      }
+		  else{
+			  if(isPerception)
+			  {
+				  type = "combatperception"
+			  }
+		  }
+	  }
+  }
+  return type;
+}
+
+function getCombatSkill(actor, matchingPower, combatSkilltype) {
+  let combatSkill = findSkillByLabel(actor.system.competence[combatSkilltype], matchingPower.name);
+  if(!combatSkill){
+    if(actor.system.competence[combatSkilltype].list[0]!=undefined){
+      combatSkill =  actor.system.competence.combatcontact.list[0];
+    }
+    if(!combatSkill){
+      ui.notifications.warn("This character has no combat skill to supply attack value for  combat power  "+ matchingPower.name );
+    }
+    return combatSkill;
+  }
+}
+
 
 function saveLinkedAttack(actor, matchingPower) {
   let lastAttackKey = findAttackLastAttackKey(actor.system.attaque);
@@ -742,13 +780,11 @@ function saveLinkedAttack(actor, matchingPower) {
   let linkedAttack = actor.system.attaque[lastAttackKey];
   linkNextPower = true;
   linkedAttack.isDmg = true;
-  linkedAttack.afflictioneffet = actor.system.attaque[lastAttackKey].effet;
-  linkedAttack.effet = matchingPower.system.cout.rang;
-  linkedAttack.saveAffliction = actor.system.attaque[lastAttackKey].save;
-  linkedAttack.afflictiondef = actor.system.attaque[lastAttackKey].basedef;
-  linkedAttack.basedef = 15;
-  linkedAttack.save = "robustesse";
 
+  linkedAttack.save.affliction.effet = linkedAttack.effet.toString();
+  linkedAttack.save.dmg.effet = matchingPower.system.cout.rang.toString();
+  linkedAttack.save.dmg.type = getSaveFromResistance(matchingPower, "Toughness")
+	
   updates[`system.attaque.${lastAttackKey}`] = linkedAttack;
   actor.update(updates);
   game.actors.set(actor._id, actor);
@@ -798,69 +834,136 @@ function getPerceptionFromPower(matchingPower){
 }
 
 function determineAffliction(powerConfig, matchingPower) {
-  let effectName = matchingPower.system.effetsprincipaux;
-  if (effectName == "") {
-    effectName = matchingPower.name;
-  }
-  let conditions = [];
-  const presetAfflictions = [
-    { power: "Dazzle", afflictions: { resistedBy: "Fortitude", "e1": ["Impaired"], "e2": ["Disabled"], "e3": ["Unaware"] } },
-    { power: "Mind Control", afflictions: { resistedBy: "Will", "e1": ["Dazed"], "e2": ["Compelled"], "e3": ["Controlled"] } },
-    { power: "Snare", afflictions: { resistedBy: "Dexterity", "e1": ["Hindered", "Vulnerable"], "e2": ["Immobile", "Defenseless"] } },
-    { power: "Suffocation", afflictions: { resistedBy: "Fortitude", "e1": ["Dazed"], "e2": ["Stunned"], "e3": ["Incapacitated"] } },
-  ];
-  
-  let presetAffliction = presetAfflictions.find(affliction => effectName.toLowerCase().includes(affliction.power.toLowerCase()));
-  if (presetAffliction) {
-    conditions = presetAffliction.afflictions;
-  } else {
-    let details = matchingPower.system.effets;
-    details = details.replace(/<[^>]*>/g, '');
-    const pattern1 = /Affliction resisted by (.*?); \/([^\/\s]+)(?:\s[^\/]+)?\/([^\/\s]+)(?:\s[^\/]+)?(?:\/([^\/\s]+)(?:\s[^\/]+)?)?/;
-    const pattern2 = /1st degree: (.*?), 2nd degree: (.*?), 3rd degree: (.*?), Resisted by: (.*?),/;
-    let match = details.match(pattern1);
+    let effectName = matchingPower.system.effetsprincipaux;
+    if (effectName == "") {
+        effectName = matchingPower.name;
+    }
+    let affliction = {};
+    const presetAfflictions = [
+        { 
+			power: "Dazzle", 
+			afflictions: 
+			{ 
+				resistedBy: "Fortitude", 
+				result:
+				[
+					{status:[findStatusEffect("Impaired").id], value:0},
+					{status: [findStatusEffect("Disabled").id],value:0}, 
+					{status: [findStatusEffect("Unaware").id] ,value:0}
+				],
+			}
+		},
+        { 
+			power: "Mind Control", 
+			afflictions: 
+			{ 
+				resistedBy: "Will", 
+				result:
+				[
+					{status:[findStatusEffect("Dazed").id], value:0},
+					{status:[findStatusEffect("Compelled").id],  value:0},  
+					{status:[findStatusEffect("Controlled").id] , value:0} 
+				],
+			}
+		},
+        { power: "Snare", 
+			afflictions: 
+			{ 
+				resistedBy: "Dexterity",
+				result:
+				[
+					{status:[findStatusEffect("Hindered").id, findStatusEffect("Vulnerable").id], value:0},  
+					{status:[findStatusEffect("Immobile").id, findStatusEffect("Defenseless").id], value:0} 
+				],	
+			}
+		},
+		{ 
+			power: "Suffocation", 
+			afflictions: 
+			{ 
+				resistedBy: "Fortitude",  
+				result:
+				[
+					{status:[findStatusEffect("Dazed").id], value:0},  
+					{status:[findStatusEffect("Stunned").id], value:0}  ,
+					{status:[findStatusEffect("Incapacitated").id], value:0} 
+				]
+			}
+		}
+	];
     
-    if (!match) {
-      let details = matchingPower.system.notes;
-      details = details.replace(/<[^>]*>/g, '');
-      match = details.match(pattern2);
-      if (match) {
-        const result = {
-          resistedBy: match[4].trim(),
-          "e1": [match[1].trim()],
-          "e2": [match[2].trim()],
-          "e3": [match[3].trim()],
-        };
-        conditions = result;
-      }
+    let presetAffliction = presetAfflictions.find(affliction => effectName.toLowerCase().includes(affliction.power.toLowerCase()));
+    if (presetAffliction) {
+        affliction = presetAffliction.afflictions;
+		
     } else {
-      const result = {
-        resistedBy: match[1]
-      };
-      if (match[2]) result["e1"] = [match[2].trim()];
-      if (match[3]) result["e2"] = [match[3].trim()];
-      if (match[4]) result["e3"] = [match[4].trim()];
-      conditions = result;
-    }
-  }
-
-  ["e1", "e2", "e3"].forEach(effect => {
-    let tempConditions = [];
-    if (conditions[effect]) {
-      conditions[effect].forEach(condition => {
-        const statusEffect = findStatusEffect(condition); // Assuming findStatusEffect is defined elsewhere
-        if (statusEffect !== null) {
-          tempConditions.push(statusEffect);
+        let details = matchingPower.system.effets;
+        
+        details = details.replace(/<[^>]*>/g, '');
+        const pattern1 = /Affliction resisted by (.*?); \/([^\/\s]+)(?:\s[^\/]+)?\/([^\/\s]+)(?:\s[^\/]+)?(?:\/([^\/\s]+)(?:\s[^\/]+)?)?/;
+		let match = details.match(pattern1);
+		details = details.replace(/<[^>]*>/g, '')
+		if(!match)
+		{
+            details = matchingPower.system.notes
+			details = details.replace(/<[^>]*>/g, '')
+			match = details.match(pattern1);
         }
-      });
+		if(match){
+			affliction.resistedBy = match[1].trim();
+			let one; 
+			let two;
+			let three;
+			if(match[2])
+				one = findStatusEffect(match[2].trim()).id
+			if(match[3])
+				two = findStatusEffect(match[3].trim()).id
+			if(match[4])
+				three = findStatusEffect(match[4].trim()).id
 
-      conditions[effect] = tempConditions;
-    }
-  });
-  
-  return conditions;
+			affliction.result = [
+				{status:[one], value: 0},
+				{status:[two], value: 0},
+				{status:[three], value: 0},
+			]; 
+		}
+		else{
+			const pattern2 = /1st degree: (.*?), 2nd degree: (.*?), 3rd degree: (.*?), Resisted by: (.*?),/;
+	        let match = details.match(pattern2);
+			if (!match)
+	        {
+	            details = matchingPower.system.notes
+				details = details.replace(/<[^>]*>/g, '')
+				match = details.match(pattern2);
+	        }
+	        if (match) {
+	            let one; 
+	            let two;
+	            let three;
+				affliction.resistedBy = match[4].trim();
+	            if(match[1])	
+	                one = findStatusEffect(match[1].trim()).id
+	            if(match[2])
+	                two = findStatusEffect(match[2].trim()).id
+	            if(match[3])
+	                three = findStatusEffect(match[3].trim()).id
+	
+	            affliction.result = [
+	                {status:[one], value: 0},
+	                {status:[two], value: 0},
+	                {status:[three], value: 0},
+	            ];    
+	        }
+		}
+    }  
+	if(affliction.result && affliction.result[2].status[0]==undefined){
+				affliction.result.splice(2,1)
+			}
+	if(affliction.result && affliction.result[1].status[0]==undefined){
+		affliction.result.splice(1,1)
+	}
+    return affliction;
 }
-
 
 function findStatusEffect(englishCondition) {
 	let conditionTranslations = {
@@ -918,30 +1021,16 @@ function findSkillByLabel(skills, label) {
   return null; 
 }
 
-async function createAttack(actor, label, type, baseDef, effet, save, critique,isAffliction,isDamage, skill,isArea=false, afflictions=null, pwr="") {
-  if(!effet || effet ==0)
+async function createAttack(actor, matchingPower, type, save, critique, attackType, skill, afflictions=null) {
+  
+  if(afflictions ==  null)
   {
-          ui.notifications.warn("Effect set to 0 for attack "+ label);
-       
-  }
-    if(afflictions ==  null)
-    {
-        afflictions = [
-        {
-            value: 0,
-            status: []
-        },
-        {
-            value: 0,
-            status: []
-        },
-        {
-            value: 0,
-            status: []
-        }
-    ]
-    }
-    // Create the new attack data
+      afflictions = [
+        { value: 0, status: [] },
+        { value: 0, status: [] },
+        { value: 0, status: [] }
+  ]} 
+   
   let skillId = 0;
   let attaque = 0;
   if(skill){
@@ -949,7 +1038,7 @@ async function createAttack(actor, label, type, baseDef, effet, save, critique,i
     attaque = skill.total;
   }  
   else{
-    if(type == "combatcontact"){
+    if(type == "combatcontact" ){
       attaque = actor.system.caracteristique.combativite.total;
     }
     if(type == "combatdistance"){
@@ -962,26 +1051,24 @@ async function createAttack(actor, label, type, baseDef, effet, save, critique,i
   if(type=="combatcontact"){
     defpassive = "parade"
   }
-  else if(type="combatdistance")
+  else if(type=="combatdistance" || type=="area")
   {
     defpassive = "esquive";
   }
+
   let newAttackData = {_id:foundry.utils.randomID(),
     afflictioneeffect : 0,        
-    area:{has:isArea, esquive:0},
+    area:{has:type=="area", esquive:0},
     attaque : attaque,
     basearea:0,
     critique:critique,
-    effet:effet,
-    isAffliction:isAffliction,
-    isDamage:isDamage, 
-    isDmg:isDamage,
-    label:label,
-    links:{ability:"",pwr:pwr,skill: skillId},
+    effet:matchingPower.system.cout.rang,
+    isAffliction:attackType=="affliction",
+    isDmg:attackType=="damage",
+    label: matchingPower.name,
+    links:{ability:"",pwr:matchingPower._id,skill: skillId},
     mod:{atk:0, eff:0},
-    noAtk:false,
-    noCrit: false,
-    pwr:pwr,
+    pwr:matchingPower._id,
     repeat:{
         affliction:afflictions,
         dmg: [{value:1, status: ['dazed']},
@@ -991,25 +1078,25 @@ async function createAttack(actor, label, type, baseDef, effet, save, critique,i
     },
     save:{
         dmg: {
-            type: "robustesse",
+            type: save,
             defense: "15",
             effet: "0"
         },
         other: {
-            type: "robustesse",
+            type: save,
             defense: "15"
         },
         affliction: {
-            type: "volonte",
+            type: save,
             defense: "10",
             effet: "0"
         },
         passive: {
-            type: "parade"
+            type: defpassive
         }
     },
     settings:{
-        noatk: false,
+        noatk: type=="area",
         nocrit: false
     },
     skill:skillId,
@@ -1022,7 +1109,7 @@ async function createAttack(actor, label, type, baseDef, effet, save, critique,i
 // If the attack exists, update it; otherwise, add a new one
 let existingAttackKey = null;
 for (const [key, attack] of Object.entries(actor.system.attaque)) {
-  if (attack.label === label) {
+  if (attack.label === matchingPower.name) {
     existingAttackKey = key;
     break;
   }
@@ -1114,5 +1201,3 @@ class TokenMM3 extends Token {
 		return positions;
 	}
 }
-
-

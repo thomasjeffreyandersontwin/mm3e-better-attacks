@@ -16,7 +16,7 @@ Hooks.on('ready', () => {
   Hooks.on('rollAttack', async (atk, token,strategie, altKey) => {
       console.log("hooking into attack  " + atk);
       console.log("hooking for token  " + token);
-      if(atk.area.has==true){
+      if(atk.area && atk.area.has==true){
     //    if(game.modules.get('warpgate')?.active)
     //    {
             await PlaceTemplateAndTargetActors(token, atk);
@@ -260,7 +260,7 @@ async function createPowerTemplate(token, attaque) {
         extras = pwr.system.extras;
         for (const key in extras) {
             const extra = extras[key];
-            if (extra.name.includes("Area") || extra.name.includes("Cone") || extra.name.includes("Burst") || extra.name.includes("Line")) {
+            if (extra.name && (extra.name.includes("Area") || extra.name.includes("Cone") || extra.name.includes("Burst") || extra.name.includes("Line"))) {
                 const regex = /(\d+)\s*ft\./i;
                 const match = extra.name.match(regex);
                 if (match) {
@@ -633,10 +633,21 @@ async function createUnarmedAttack(actor){
 
 	//create a dummy matching power for the unarmed attack
   let matchingPower = {actor:actor, _id:0, name: attackName, system: { cout: {rang: effect}}}
-  await createAttack(actor,matchingPower, "combatcontact", 15, 'damage', 20, unarmedCombatSkill)
+  let attack = await createAttack("Unarmed", actor,matchingPower, "combatcontact", "robustesse" , 20, 'damage',unarmedCombatSkill)
 
-
-
+	let foundKey;
+  for (let [key, item] of  Object.entries(actor.system.attaque) )
+  {
+	  if (item["_id"] === attack._id) {
+		  foundKey = key;
+		  break; 
+	}
+  }
+  
+  new Promise(resolve => setTimeout(resolve, 1000));
+  let updates={};
+  updates[`system.attaque.${foundKey}.label`] = attack.label+" ";
+  await actor.update(updates);
 }
 let linkNextPower =false;
 
@@ -681,6 +692,8 @@ async function createAttackDetailsFromPower( matchingPower, actor)    {
     effectName = matchingPower.name
   }
   const powersConfig = [
+	{ name: "Strength Damage", range: "Close", resistance: "Toughness" ,attackType: "damage"},
+	{ name: "Strength-based Damage", range: "Close", resistance: "Toughness" ,attackType: "damage"},
     { name: "Affliction", range: "Close", resistance: "Fortitude" , attackType: "affliction" },
     { name: "Blast", range: "Ranged", resistance: "Toughness" , attackType:"damage"},
     { name: "Damage", range: "Close", resistance: "Toughness" ,attackType:"damage"},
@@ -695,10 +708,16 @@ async function createAttackDetailsFromPower( matchingPower, actor)    {
     { name: "Snare", range: "Ranged", resistance: "Dodge" ,attackType: "affliction"},
     { name: "Strike", range: "Close", resistance: "Toughness" ,attackType:"damage" },
     { name: "Suffocation", range: "Ranged", resistance: "Fortitude" ,attackType: "affliction"},
+	{ name: "Enhanced Strength", range: "Close", resistance: "Toughness" ,attackType: "damage"}
+	
+ 
   ];
   let powerConfig = powersConfig.find(power => effectName.toLowerCase().includes(power.name.toLowerCase()));
   
-  
+  if(!powerConfig && linkNextPower==true)
+  {
+	  linkNextPower = false;
+  }
   if(powerConfig){
     let save= getSaveFromResistance(matchingPower, powerConfig.resistance);
     let type = getTypeFromPower(matchingPower, powerConfig);
@@ -726,7 +745,8 @@ async function createAttackDetailsFromPower( matchingPower, actor)    {
     }
 
 	
-    await createAttack(actor, matchingPower, type, save, 20, powerConfig.attackType, combatSkill, afflictionResults);
+    await createAttack(effectName, actor, matchingPower, type, save, 20, powerConfig.attackType, combatSkill, afflictionResults);
+	await new Promise(resolve => setTimeout(resolve, 1000));
   }
 }
 
@@ -763,14 +783,14 @@ function getTypeFromPower(matchingPower, powerConfig){
 function getCombatSkill(actor, matchingPower, combatSkilltype) {
   let combatSkill = findSkillByLabel(actor.system.competence[combatSkilltype], matchingPower.name);
   if(!combatSkill){
-    if(actor.system.competence[combatSkilltype].list[0]!=undefined){
-      combatSkill =  actor.system.competence.combatcontact.list[0];
+    if(actor.system.competence[combatSkilltype].list[0]!=undefined || actor.system.competence[combatSkilltype].list[1]!=undefined){
+      combatSkill =  actor.system.competence[combatSkilltype].list[0] || actor.system.competence[combatSkilltype].list[1];
     }
     if(!combatSkill){
       ui.notifications.warn("This character has no combat skill to supply attack value for  combat power  "+ matchingPower.name );
     }
-    return combatSkill;
   }
+	return combatSkill;
 }
 
 
@@ -956,10 +976,10 @@ function determineAffliction(powerConfig, matchingPower) {
 	        }
 		}
     }  
-	if(affliction.result && affliction.result[2].status[0]==undefined){
+	if(affliction.result[2] && affliction.result[2].status[0]==undefined){
 				affliction.result.splice(2,1)
 			}
-	if(affliction.result && affliction.result[1].status[0]==undefined){
+	if(affliction.result[1] && affliction.result[1].status[0]==undefined){
 		affliction.result.splice(1,1)
 	}
     return affliction;
@@ -1021,8 +1041,8 @@ function findSkillByLabel(skills, label) {
   return null; 
 }
 
-async function createAttack(actor, matchingPower, type, save, critique, attackType, skill, afflictions=null) {
-  
+async function createAttack(effect, actor, matchingPower, type, save, critique, attackType, skill, afflictions=null) {
+  let key;
   if(afflictions ==  null)
   {
       afflictions = [
@@ -1031,8 +1051,9 @@ async function createAttack(actor, matchingPower, type, save, critique, attackTy
         { value: 0, status: [] }
   ]} 
    
-  let skillId = 0;
-  let attaque = 0;
+  let skillId = "";
+  let attaque = "";
+  let ability="";
   if(skill){
     skillId = skill._id;
     attaque = skill.total;
@@ -1040,9 +1061,13 @@ async function createAttack(actor, matchingPower, type, save, critique, attackTy
   else{
     if(type == "combatcontact" ){
       attaque = actor.system.caracteristique.combativite.total;
+		type = "other"
+	  //ability = "force";
     }
     if(type == "combatdistance"){
-      attaque = actor.system.caracteristique.dexterite.total;
+		type = "other"
+     //ability = "dexterite"
+	    attaque = actor.system.caracteristique.dexterite.total;
     } 
 
 
@@ -1056,6 +1081,11 @@ async function createAttack(actor, matchingPower, type, save, critique, attackTy
     defpassive = "esquive";
   }
 
+if(effect && effect.includes("Strength") || effect =="Unarmed")
+{
+	ability = "force";
+}
+
   let newAttackData = {_id:foundry.utils.randomID(),
     afflictioneeffect : 0,        
     area:{has:type=="area", esquive:0},
@@ -1066,14 +1096,16 @@ async function createAttack(actor, matchingPower, type, save, critique, attackTy
     isAffliction:attackType=="affliction",
     isDmg:attackType=="damage",
     label: matchingPower.name,
-    links:{ability:"",pwr:matchingPower._id,skill: skillId},
+    links:{ability:ability,pwr:matchingPower._id,skill: skillId, },
     mod:{atk:0, eff:0},
     pwr:matchingPower._id,
     repeat:{
         affliction:afflictions,
-        dmg: [{value:1, status: ['dazed']},
-                 {value:1, status: ['chanceling']},
-                 {value:1, status: ['neutralized']}
+        dmg: [
+				 {value:1, status: []},
+				 {value:2, status: ['dazed']},
+                 {value:3, status: ['chanceling']},
+                 {value:4, status: ['neutralized']}
         ],
     },
     save:{
@@ -1104,33 +1136,33 @@ async function createAttack(actor, matchingPower, type, save, critique, attackTy
     type: type,
 };
 
-
-
 // If the attack exists, update it; otherwise, add a new one
-let existingAttackKey = null;
-for (const [key, attack] of Object.entries(actor.system.attaque)) {
+
+for (const [keyIndex, attack] of Object.entries(actor.system.attaque)) {
   if (attack.label === matchingPower.name) {
-    existingAttackKey = key;
+    key = keyIndex;
     break;
   }
 }
 let updates = {};
-if (existingAttackKey) {
-  updates[`system.attaque.${existingAttackKey}`] = newAttackData;
+if (key) {
+  updates[`system.attaque.${key}`] = newAttackData;
   await actor.update(updates);
 } else {
   const attacks = actor.system.attaque;
   let newAttack ={}
   let attackKeys = Object.keys(attacks);
-  let newKey = attackKeys.length > 0 ? Math.max(...attackKeys) : 0;   
-  newAttack[`system.attaque.${newKey+1}`] = newAttackData
+  key = attackKeys.length > 0 ? Math.max(...attackKeys) : 0;   
+  newAttack[`system.attaque.${key+1}`] = newAttackData
   console.log("new attack" + newAttackData)
   await actor.update(newAttack);
+  console.log(newAttack)
 }
 
 
 
 game.actors.set(actor._id , actor)
+return actor.system.attaque[key]
 
 } 
 

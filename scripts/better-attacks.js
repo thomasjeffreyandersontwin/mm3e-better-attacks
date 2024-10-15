@@ -275,7 +275,7 @@ async function createPowerTemplate(token, attaque) {
 					 }
 					if(extra.name.includes("Burst"))
 					 {
-						 distance = 30/5;
+						 distance = 30/10;
 					 }
 					 if(extra.name.includes("Burst"))
 					 {
@@ -288,7 +288,7 @@ async function createPowerTemplate(token, attaque) {
     } else {
         distance = 3;
     }
-    let templateDistance = distance * 1.4;
+    let templateDistance = distance ;
     let warpDistance = distance * 2;
 
     let range = GetRangeForAttack(token, attaque)
@@ -297,7 +297,7 @@ async function createPowerTemplate(token, attaque) {
     if (range == "Line") {
         t = "ray"
         warpDistance = warpDistance;
-        templateDistance = templateDistance ;
+        templateDistance = templateDistance  *1.5;
     }
     if (range == "Cone") {
         t = "cone"
@@ -307,7 +307,8 @@ async function createPowerTemplate(token, attaque) {
     }
     if (range == "Burst") {
         t = "circle"
-        templateDistance = templateDistance //* 1.25;
+        templateDistance = distance/2 * 1.25
+		warpDistance = warpDistance/2//* 1.25;
     }
 
     let width = undefined
@@ -331,7 +332,7 @@ async function createPowerTemplate(token, attaque) {
     if (position) {
         const templateData = {
             t: t,
-            distance: warpDistance * canvas.scene.grid.size / 100 ,
+            distance: templateDistance * canvas.scene.grid.size / 100 ,
             x: position.x,
             width: width,
             y: position.y,

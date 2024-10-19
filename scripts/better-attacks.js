@@ -211,7 +211,7 @@ function GetRangeForPower(matchingPower) {
     return "Range"
   }
   if(matchingPower.system.portee=="perception"){
-    return "Range"
+    return "Range" 
   }
   if(matchingPower.system.portee=="contact"){
     return "Melee"
@@ -233,7 +233,7 @@ function GetRangeForAttack(token, attaque) {
 
 
     let range = undefined;
-    if (attaque.type == 'combatcontact') {
+    if (attaque.save.passive.type == 'parade') {
         range = 'Melee';
     } else {
         range = 'Range';

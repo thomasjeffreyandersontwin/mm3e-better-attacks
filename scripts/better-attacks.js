@@ -633,7 +633,7 @@ async function createUnarmedAttack(actor){
   }
 
 	//create a dummy matching power for the unarmed attack
-  let matchingPower = {actor:actor, _id:0, name: attackName, system: { cout: {rang: effect}}}
+  let matchingPower = {actor:actor, _id:"", name: attackName, system: { cout: {rang: effect}}}
   let attack = await createAttack("Unarmed", actor,matchingPower, "combatcontact", "robustesse" , 20, 'damage',unarmedCombatSkill)
 
 	let foundKey;

@@ -58,15 +58,14 @@ Hooks.on('ready', () => {
 async function triggerAnimationForPower(power, source) {
   //try for power name first
   let powerName = power.name;
-  let item = { 
+  let item = {
       name: powerName,
       type: "spell"
   };
 
   let options = {};
 
-  if (window.AutomatedAnimations) {console.log("attempting to animate power based on nanme " + power.name)
-	  console.log("attempting to animate " + power.name)
+  if (window.AutomatedAnimations) {
       await window.AutomatedAnimations.playAnimation(source, item, options);
   }
 
@@ -80,27 +79,18 @@ async function triggerAnimationForPower(power, source) {
 
   //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
   setTimeout( () => {
-	  if(!power.system.descripteurs["1"]){
-			console.log("no descriptor found for power "  + power.name)
-			  
-		}
       if (!animationEnded && power && power.system.descripteurs["1"]) {
           
           let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
-          let range = GetRangeForPower( power) ? GetRangeForPower(power) : "Ranged";
+          let range = GetRangeForPower( power) ? GetRangeForPower(power) : "Range";
           let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+
           attackName = descripter + "-" + range + "-" + attackType;
-		  console.log("attempting to animate based on <descriptor>-<range>-<effect>" + attackName)
           item = {
               name: attackName,
               type: "spell"
           };
-		  const macro = game.macros.getName(attackName)
-		  if (macro) {
-			  macro.execute();
-		  } else {
-	          window.AutomatedAnimations.playAnimation(source, item, options);
-		  }
+          window.AutomatedAnimations.playAnimation(source, item, options);
       }
   }
   , 1000);
@@ -111,15 +101,14 @@ async function triggerAnimationForAttack(attaque, source) {
     let power = source.actor.items.get(attaque.links.pwr)
     //try for power name first
     let attackName = attaque.label;
-    let item = { 
+    let item = {
         name: attackName,
         type: "spell"
     };
 
-    let options = {}; 
+    let options = {};
 
     if (window.AutomatedAnimations) {
-		console.log("attempting to run animation based on power name  " + power.name)
         await window.AutomatedAnimations.playAnimation(source, item, options);
     }
 
@@ -133,28 +122,19 @@ async function triggerAnimationForAttack(attaque, source) {
 
     //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
     setTimeout( () => {
-		if(!power.system.descripteurs["1"]){
-			console.log("no descriptor found for power "  + power.name)
-		}
         if (!animationEnded && power && power.system.descripteurs["1"]) {
             
             let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
             let range = GetRangeForAttack(source.actor, attaque) ? GetRangeForAttack(source.actor, attaque) : "Range";
-            let attackType = GetAttackTypeFromAttack(attaque) ? GetAttackTypeFromAttack(attaque) : "Damage";		
+            let attackType = GetAttackTypeFromAttack(attaque) ? GetAttackTypeFromAttack(attaque) : "Damage";
+
             attackName = descripter + "-" + range + "-" + attackType;
-			console.log("attempting to run animation " + attackName)
             item = {
                 name: attackName,
                 type: "spell"
             };
-            const macro = game.macros.getName(attackName)
-			  if (macro) {
-				  macro.execute();
-			  } else {
-		          window.AutomatedAnimations.playAnimation(source, item, options);
-			  }
+            window.AutomatedAnimations.playAnimation(source, item, options);
         }
-		
     }
     , 1000);
     // Timeout duration in milliseconds, adjust based on expected animation duration*/
@@ -190,32 +170,13 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
 
 function GetEffectFromPower(power) {
   let effect = power.system.effetsprincipaux;
-
+ //regex to strip trailing number form effect eg: Damage 5 -> Damage
   effect = effect.replace(/\d+/g, '');
-
-const effects = [  
-				"Affliction", "Alternate Form", "Blast", "Burrowing", "Communication",   
-				"Comprehend", "Concealment", "Create", "Damage", "Dazzle", 
-				"Deflect", "Duplication", "Element Control", "Elongation", 
-				"Energy Absorption", "Energy Aura", "Energy Control", "Enhanced Trait", 
-				 "Environment", "Extra Limbs", "Feature", "Flight", "Force Field",
-				 "Growth", "Healing", "Illusion", "Immortality", "Immunity", 
-				 "Insubstantial", "Invisibility", "Leaping", "Luck Control",
-				 "Magic", "Mental Blast", "Mimic", "Mind Control", "Mind Reading",
-				 "Morph", "Move Object", "Movement", "Nullify", "Power-Lifting", 
-				 "Protection", "Quickness", "Regeneration", "Remote Sensing", 
-				 "Senses", "Shapeshift", "Shrinking", "Sleep", "Snare", 
-				 "Speed", "Strike", "Suffocation", "Summon", "Super-Speed",
-				 "Swimming", "Teleport", "Transform", "Variable", "Weaken", "Leaping", "Swinging", "Running"];
-  let matchedEffect = effects.find(effectEntry => effect.includes(effectEntry));
-  if(matchedEffect=="Blast"){
-    matchedEffect="Damage";
+  if(effect=="Blast"){
+    effect="Damage";
   }
-  if(matchedEffect=="Dazzle")
-  {
-	  matchedEffect = "Affliction"
-  }
-  return matchedEffect;
+  return effect;
+  
 }
 
 function GetAttackTypeFromAttack(attaque) {
@@ -243,14 +204,14 @@ function GetRangeForPower(matchingPower) {
       }
       if(item.name && item.name.includes("Range"))
       {
-        return "Ranged"
+        return "Range"
       }
   }
   if(matchingPower.system.portee=="distance"){
     return "Range"
   }
   if(matchingPower.system.portee=="perception"){
-    return "Range" 
+    return "Range"
   }
   if(matchingPower.system.portee=="contact"){
     return "Melee"
@@ -258,9 +219,8 @@ function GetRangeForPower(matchingPower) {
   if(matchingPower.system.portee=="personnelle"){
     return "Personal"
   }
-  return "Ranged";
+  return "Range";
 }
-
 function GetRangeForAttack(token, attaque) {
   let pwr="";
   if(token.actor){
@@ -273,10 +233,10 @@ function GetRangeForAttack(token, attaque) {
 
 
     let range = undefined;
-    if (attaque.save.passive.type == 'parade') {
+    if (attaque.type == 'combatcontact') {
         range = 'Melee';
     } else {
-        range = 'Ranged';
+        range = 'Range';
     }
     if (attaque.area.has == true) {
         range = 'Area';
@@ -673,7 +633,7 @@ async function createUnarmedAttack(actor){
   }
 
 	//create a dummy matching power for the unarmed attack
-  let matchingPower = {actor:actor, _id:0, name: attackName, system: { cout: {rang: effect}}}
+  let matchingPower = {actor:actor, _id:"", name: attackName, system: { cout: {rang: effect}}}
   let attack = await createAttack("Unarmed", actor,matchingPower, "combatcontact", "robustesse" , 20, 'damage',unarmedCombatSkill)
 
 	let foundKey;

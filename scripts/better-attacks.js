@@ -124,11 +124,12 @@ async function triggerAnimationForAttack(attaque, source) {
 	const preset =   game.settings.get("autoanimations", "aaAutorec-preset")
 	const templatefx =   game.settings.get("autoanimations", "aaAutorec-templatefx")
 
-	const autorecSettings  = {melee, range, ontoken, preset, templatefx };
-	const matchedEntry = Object.values(autorecSettings).find(category => {
-		return category.some(entry => entry.name === search);
-	});
-	return matchedEntry
+	const allEntries = [...melee, ...range, ...ontoken, ...preset, ...templatefx];
+	const matchedEntry = allEntries.find(entry => entry.label === search);
+	if(matchedEntry){
+		return matchedEntry.label
+	}
+	return matchedEntry;
 }
 function playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source, attaque=undefined) {
   let animationEnded = false;

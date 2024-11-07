@@ -220,16 +220,18 @@ async function getAttackLabel(actor, attack) {
 }
 
  function getPowerLabel(actor, power,range=undefined){
-	const powerName =power.name
-	let result = findAutoRecEntry(powerName)
-	if(result)
-	{
-		return result
-	}
-	if(!range)
-	{
-		range = GetRangeForPower(power) || "No Range";
-	}
+	 if(power){
+		const powerName =power.name
+		let result = findAutoRecEntry(powerName)
+		if(result)
+		{
+			return result
+		}
+		if(!range)
+		{
+			range = GetRangeForPower(power) || "No Range";
+		}
+	 }
 	let effect;
 	let descriptor;
 	if(power){
@@ -638,6 +640,12 @@ function distanceFromLine(px, py, x0, y0, x1, y1) {
 }
 }
 
+Hooks.on('renderActorDirectory', async function () {
+	if(!game.user.isGM) return;
+	const setting = game.settings.get("mutants-and-masterminds-3e", "font");
+	addCreateAttackFomPowerButtonToActorDirectory()
+});
+
 function addCreateAttackFomPowerButtonToActorDirectory(setting) {
   let addHtml = ``;
 
@@ -656,7 +664,7 @@ function addCreateAttackFomPowerButtonToActorDirectory(setting) {
         cancel: {
           label: "Cancel",
           callback: () => console.log("User clicked OK.")
-        }
+        } 
       },
       default: "cancel",
      }).render(true);
@@ -667,17 +675,17 @@ function addCreateAttackFomPowerButtonToActorDirectory(setting) {
 
 async function CreateAttackForAllCharacters(){
   // Loop through all actors in the game
-  game.actors.contents.forEach(actor => {
+  for (actor of game.actors.contents){
     // Check if the actor is in a folder and if that folder is expanded (open)
   if (actor.folder && actor.folder.expanded) {
     // Assuming CreateAttacksFromPowers is a method on the actor or globally available
-    CreateAttacksFromPowers(actor,true).then(() => {
+     await CreateAttacksFromPowers(actor,null, true).then(() => {
         console.log(`CreateAttacksFromPowers applied to ${actor.name}`);
       }).catch(err => {
         console.error(`Error applying CreateAttacksFromPowers to ${actor.name}:`, err);
       });
     }
-  });
+  };
 }
 window.CreateAttackForAllCharacters = CreateAttackForAllCharacters; 
 
@@ -1282,12 +1290,13 @@ let updates = {};
 if (key) {
   updates[`system.attaque.${key}`] = newAttackData;
   await actor.update(updates);
-} else {
+} else { 
   const attacks = actor.system.attaque;
   let newAttack ={}
   let attackKeys = Object.keys(attacks);
   key = attackKeys.length > 0 ? Math.max(...attackKeys) : 0;   
   newAttack[`system.attaque.${key+1}`] = newAttackData
+  key =key+1
   console.log("new attack" + newAttackData)
   await actor.update(newAttack);
   console.log(newAttack)

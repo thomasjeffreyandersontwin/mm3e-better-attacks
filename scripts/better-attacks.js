@@ -26,140 +26,239 @@ Hooks.on('ready', () => {
         await triggerAnimationForAttack(atk, token);
       } 
   })
+	  
 
   Hooks.on("renderActorSheet", (app, html, data) => {
-      console.log("hooking into character sheet render");
-      const attackSection = html.find(".attaque");
-      console.log(attackSection)
+	const actor = app.actor;
+	  
+	if (!actor) return; 
+		//add what animation will be called when clicking on an attack
+		html.find(".reorderDrop[data-type='attaque']").each(async (index, element) => {
+	        const attackId = $(element).find(".editAtk").data("id"); // Get the `data-id` from `.editAtk`
+	        
+	        const attackData = Object.values(actor.system.attaque).find(atk => atk._id === attackId);
+	        if (!attackData) return;
+	        const label = await getAttackLabel(actor, attackData);
+	        const labelElement = $(`
+	            <div class="attack-label-full-row" style="font-size: 0.9em; font-style: ; font-weight: normal; text-align: left; margin-top: -6px; margin-bottom: 8px; padding-left: 10px; width: 100%;">
+	                <b>Animation:</b> ${label}
+	            </div>
+	        `);
+	        $(element).after(labelElement);
+		});
 
-      const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
-      const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
+		//add what animation will be called when clicking each power
+	html.find(".pwr.summary").each((index, element) => {
+    const powerSummary = $(element);
+    const powerName = powerSummary.find(".pwrheader .header").text().trim();
     
-      attackSection.append(convertButton);
-      attackSection.append(deleteConvertButton);
-    
-      
-      convertButton.on("click", (event) => {
-          event.preventDefault();
-          console.log(`Custom action triggered for ${app.actor.name}`);
-          // Define the behavior for this new button
-          CreateAttacksFromPowers(app.actor, app, false);  
-      });
+    if (powerName) {
+        const itemId = powerSummary.data("item-id");
+        const power = app.actor.items.get(itemId);
+        const labelText = getPowerLabel(actor, power);
+        
+        // Create the label element without additional styling and add a newline after it
+        const labelElement = $(
+			`<div style="font-weight: normal; text-align: center">
+				<b> Animation:</b>${labelText}
+			</div><br>`);
+      //  const newlineElement = $('<br>');  // Newline element
+        
+        // Find the .data child inside .allData and insert label as the first child
+        const firstDataContainer = powerSummary.find(".allData .data").first();
+        if (firstDataContainer.length > 0) {
+            firstDataContainer.append(labelElement);
+        } else {
+            console.warn("Could not find the target .data element for inserting the label.");
+        }
+    }
+});
 
-     deleteConvertButton.on("click", (event) => {
-          event.preventDefault();
-          console.log(`Custom action triggered for ${app.actor.name}`);
-          // Define the behavior for this new button
-          CreateAttacksFromPowers(app.actor, app);  
-      });
+
+
+
+	  
+		console.log("hooking into character sheet render");
+		const attackSection = html.find(".attaque");
+		console.log(attackSection)
+		
+		const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
+		const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
+		
+		attackSection.append(convertButton);
+		attackSection.append(deleteConvertButton);
+		
+		
+		convertButton.on("click", (event) => {
+		  event.preventDefault();
+		  console.log(`Custom action triggered for ${app.actor.name}`);
+		  // Define the behavior for this new button
+		  CreateAttacksFromPowers(app.actor, app, false);  
+		});
+		
+		deleteConvertButton.on("click", (event) => {
+		  event.preventDefault();
+		  console.log(`Custom action triggered for ${app.actor.name}`);
+		  // Define the behavior for this new button
+		  CreateAttacksFromPowers(app.actor, app);  
+		});
    });
 });
 
 async function triggerAnimationForPower(power, source) {
-  //try for power name first
   let powerName = power.name;
-  let item = { 
-      name: powerName,
-      type: "spell"
-  };
+  await playAnimationByName(powerName, source);
+  playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source);
+}
+async function triggerAnimationForAttack(attaque, source) {
+    let power = source.actor.items.get(attaque.links.pwr)
+    let attackName = attaque.label;
+    await playAnimationByName(attackName, source);
+    playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source,attaque);
+}
+ 
+ function findAutoRecEntry(search){
+	const melee =  game.settings.get("autoanimations", "aaAutorec-melee")
+	const range =  game.settings.get("autoanimations", "aaAutorec-range")
+	const ontoken =   game.settings.get("autoanimations", "aaAutorec-ontoken")
+	const preset =   game.settings.get("autoanimations", "aaAutorec-preset")
+	const templatefx =   game.settings.get("autoanimations", "aaAutorec-templatefx")
 
-  let options = {};
-
-  if (window.AutomatedAnimations) {console.log("attempting to animate power based on nanme " + power.name)
-	  console.log("attempting to animate " + power.name)
-      await window.AutomatedAnimations.playAnimation(source, item, options);
-  }
-
+	const autorecSettings  = {melee, range, ontoken, preset, templatefx };
+	const matchedEntry = Object.values(autorecSettings).find(category => {
+		return category.some(entry => entry.name === search);
+	});
+	return matchedEntry
+}
+function playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source, attaque=undefined) {
   let animationEnded = false;
   function onAnimationEnd() {
-      animationEnded = true;
-      Hooks.off("aa.animationEnd", onAnimationEnd);
+    animationEnded = true;
+    Hooks.off("aa.animationEnd", onAnimationEnd);
   }
   Hooks.on("aa.animationEnd", onAnimationEnd);
 
 
   //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
-  setTimeout( () => {
-	  if(!power.system.descripteurs["1"]){
-			console.log("no descriptor found for power "  + power.name)
-			  
-		}
-      if (!animationEnded && power && power.system.descripteurs["1"]) {
-          
-          let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
-          let range = GetRangeForPower( power) ? GetRangeForPower(power) : "Ranged";
-          let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
-          attackName = descripter + "-" + range + "-" + attackType;
-		  console.log("attempting to animate based on <descriptor>-<range>-<effect>" + attackName)
-          item = {
-              name: attackName,
-              type: "spell"
-          };
-		  const macro = game.macros.getName(attackName)
-		  if (macro) {
-			  macro.execute();
-		  } else {
-	          window.AutomatedAnimations.playAnimation(source, item, options);
-		  }
-      }
-  }
-  , 1000);
-  // Timeout duration in milliseconds, adjust based on expected animation duration*/
-}
-         
-async function triggerAnimationForAttack(attaque, source) {
-    let power = source.actor.items.get(attaque.links.pwr)
-    //try for power name first
-    let attackName = attaque.label;
-    let item = { 
+  setTimeout(() => {
+	let descriptor
+	let options = {};
+	if(!power)
+	{
+		 ui.notifications.warn ("cannot play animation, no power linked to attack")
+	}
+    if (!power.system.descripteurs["0"]&& !power.system.descripteurs["1"] && !power.system.descripteurs["2"]) {
+      console.log("no descriptor found for power " + power.name);
+	    ui.notifications.warn ("cannot play animation, no descriptor found for power " + power.name)
+    }
+	else
+	{
+		descriptor = power.system.descripteurs["2"] ?power.system.descripteurs["2"]:power.system.descripteurs["1"]?power.system.descripteurs["1"]:power.system.descripteurs["0"]?power.system.descripteurs["0"]:"Energy"
+	}
+    if (!animationEnded && power && descriptor) {
+      let range 
+	  if(attaque)
+	  {
+		  range =GetRangeForAttack(source, attaque)
+	  }
+		else{
+		range= GetRangeForPower(power) ? GetRangeForPower(power) : "Ranged";
+	}
+		
+      let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+      attackName = descriptor + "-" + range + "-" + attackType;
+      console.log("attempting to animate based on <descriptor>-<range>-<effect>" + attackName);
+      item = {
         name: attackName,
         type: "spell"
-    };
-
-    let options = {}; 
-
-    if (window.AutomatedAnimations) {
-		console.log("attempting to run animation based on power name  " + power.name)
-		console.log("attempting to run animation based on power name  " + power.name)
-        await window.AutomatedAnimations.playAnimation(source, item, options);
+      };
+      const macro = game.macros.getName(attackName);
+      if (macro) {
+        macro.execute();
+      } else {
+        window.AutomatedAnimations.playAnimation(source, item, options);
+		animationEnded = false
+		function onDescAnimationEnd() {
+		    animationEnded = true;
+		    Hooks.off("aa.animationEnd", onDescAnimationEnd);
+		  }
+		  Hooks.on("aa.animationEnd", onDescAnimationEnd);
+		  setTimeout(() => {
+			  animationEnded = true
+			  ui.notifications.warn("cannot play animation, no macro or animation matching  <descriptor>-<range>-<effect> "+ attackName)
+		  },
+		  2000);
+      }
     }
-
-    let animationEnded = false;
-    function onAnimationEnd() {
-        animationEnded = true;
-        Hooks.off("aa.animationEnd", onAnimationEnd);
-    }
-    Hooks.on("aa.animationEnd", onAnimationEnd);
-
-
-    //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
-    setTimeout( () => {
-		if(!power.system.descripteurs["1"]){
-			console.log("no descriptor found for power "  + power.name)
-		}
-        if (!animationEnded && power && power.system.descripteurs["1"]) {
-            
-            let descripter = power.system.descripteurs["1"] ? power.system.descripteurs["1"] : "Energy";
-            let range = GetRangeForAttack(source.actor, attaque) ? GetRangeForAttack(source.actor, attaque) : "Range";
-            let attackType = GetAttackTypeFromAttack(attaque) ? GetAttackTypeFromAttack(attaque) : "Damage";		
-            attackName = descripter + "-" + range + "-" + attackType;
-			console.log("attempting to run animation " + attackName)
-            item = {
-                name: attackName,
-                type: "spell"
-            };
-            const macro = game.macros.getName(attackName)
-			  if (macro) {
-				  macro.execute();
-			  } else {
-		          window.AutomatedAnimations.playAnimation(source, item, options);
-			  }
-        }
-		
-    }
-    , 1000);
-    // Timeout duration in milliseconds, adjust based on expected animation duration*/
+  },
+    2000);
 }
+async function playAnimationByName(attackName, source) {
+  let item = {
+    name: attackName,
+    type: "spell"
+  };
+
+  let options = {};
+  const macro = game.macros.getName(attackName);
+   if (macro) {
+        await macro.execute();
+      } else {
+	  if (window.AutomatedAnimations) {
+	    console.log("attempting to run animation based on power name  " + attackName);
+	    await window.AutomatedAnimations.playAnimation(source, item, options);
+	  }
+  }
+}
+
+async function getAttackLabel(actor, attack) {
+    // Construct the descriptor-range-effect label
+	let range = GetRangeForAttack(actor, attack) || "No Range";
+	let power = actor.items.get(attack.links.pwr) 
+	return getPowerLabel(actor, power, range)
+}
+
+ function getPowerLabel(actor, power,range=undefined){
+	const powerName =power.name
+	let result = findAutoRecEntry(powerName)
+	if(result)
+	{
+		return result
+	}
+	if(!range)
+	{
+		range = GetRangeForPower(power) || "No Range";
+	}
+	let effect;
+	let descriptor;
+	if(power){
+	    effect = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+        descriptor = power.system.descripteurs["2"] ?power.system.descripteurs["2"]:power.system.descripteurs["1"]?power.system.descripteurs["1"]:power.system.descripteurs["0"]?power.system.descripteurs["0"]:"No Descriptor"
+	}
+	else{
+		effect = "No Effect"
+		descriptor = "NA"
+	} 
+    return `${descriptor}-${range}-${effect}`;
+}
+
+Hooks.on("renderDialog", async (dialog, html, data) => {
+  // Verify this is the correct dialog
+  if (!(dialog instanceof editAtk)) return;
+
+  // Get the actor and attack data
+  const actor = dialog.actor;
+  const attack = dialog.atk.data;
+
+  // Retrieve the descriptor-range-effect label
+  const label =  getAttackLabel(actor, attack);
+
+  // Inject the label into the dialog's HTML
+  const labelElement = $(`<div class="attack-label">Combo: ${label}</div>`);
+  html.find("section.body").prepend(labelElement); // Adjust selector if necessary
+});
+
+
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)
@@ -191,7 +290,10 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
 
 function GetEffectFromPower(power) {
   let effect = power.system.effetsprincipaux;
-
+  if (effect=="")
+  {
+	  effect = power.name
+  }
   effect = effect.replace(/\d+/g, '');
 
 const effects = [  
@@ -212,20 +314,24 @@ const effects = [
   if(matchedEffect=="Blast"){
     matchedEffect="Damage";
   }
-  if(matchedEffect=="Dazzle")
-  {
-	  matchedEffect = "Affliction"
-  }
+  //if(matchedEffect=="Dazzle")
+  //{
+	//  matchedEffect = "Affliction"
+  //}
   return matchedEffect;
-}
+} 
 
-function GetAttackTypeFromAttack(attaque) {
-    let attackType = undefined;
+function GetAttackTypeFromAttack(attaque,power = undefined) {
+	let attackType = undefined;
     if (attaque.isDmg == true) {
         attackType = 'Damage';
     }
     if (attaque.isAffliction == true) {
-        attackType = 'Affliction';
+		if(power &&  power.system.effetsprincipaux.includes("Dazzle"))
+			attackType = 'Dazzle'
+		else{
+	        attackType = 'Affliction';
+		}
     }
     return attackType;
 }
@@ -257,7 +363,8 @@ function GetRangeForPower(matchingPower) {
     return "Melee"
   }
   if(matchingPower.system.portee=="personnelle"){
-    return "Personal"
+  
+	  return "Personal"
   }
   return "Ranged";
 }
@@ -469,10 +576,10 @@ function findTokensUnderTemplate(template) {
         }
         );
     } else if (template.t === "rectangle") {
-        const left = template.x - ((template.width / 2) * canvas.scene.data.grid.size);
-        const top = template.y - ((template.height / 2) * canvas.scene.data.grid.size) ;
-        const right = template.x + ((template.width / 2) * canvas.scene.data.grid.size);
-        const bottom = template.y + ((template.width / 2) * canvas.scene.data.grid.size)
+        const left = template.x - ((template.width / 2) * canvas.scene.grid.size);
+        const top = template.y - ((template.height / 2) * canvas.scene.grid.size) ;
+        const right = template.x + ((template.width / 2) * canvas.scene.grid.size);
+        const bottom = template.y + ((template.width / 2) * canvas.scene.grid.size)
         targetedTokens = tokens.filter(token => {
             const tokenLeft = token.x;
             const tokenRight = token.x + token.w;
@@ -487,7 +594,7 @@ function findTokensUnderTemplate(template) {
             let distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
             const coneAngle = toRadians(90);
             // Assuming a 90-degree cone angle for simplicity
-            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.data.grid.size;
+            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.grid.size;
         }
         );
     } else if (template.t === "ray") {
@@ -497,10 +604,10 @@ function findTokensUnderTemplate(template) {
                 y: token.center.y
             };
             const rayEndPoint = {
-                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.data.grid.size),
-                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.data.grid.size),
+                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.size),
+                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.size),
             };
-            const templateWidthInPixels = canvas.scene.data.grid.size * (template.width / 2);
+            const templateWidthInPixels = canvas.scene.grid.size * (template.width / 2);
 
             const distanceToRay = distanceFromLine(point.x, point.y, template.x, template.y, rayEndPoint.x, rayEndPoint.y);
             return distanceToRay <= templateWidthInPixels;
@@ -630,6 +737,8 @@ async function CreateAttacksFromPowers(actor = canvas.tokens.controlled[0]?.acto
       
       }
   }
+
+
 
   await createUnarmedAttack(actor)
 }    
@@ -834,7 +943,6 @@ function getCombatSkill(actor, matchingPower, combatSkilltype) {
   }
 	return combatSkill;
 }
-
 
 function saveLinkedAttack(actor, matchingPower) {
   let lastAttackKey = findAttackLastAttackKey(actor.system.attaque);

@@ -243,23 +243,6 @@ async function getAttackLabel(actor, attack) {
     return `${descriptor}-${range}-${effect}`;
 }
 
-Hooks.on("renderDialog", async (dialog, html, data) => {
-  // Verify this is the correct dialog
-  if (!(dialog instanceof editAtk)) return;
-
-  // Get the actor and attack data
-  const actor = dialog.actor;
-  const attack = dialog.atk.data;
-
-  // Retrieve the descriptor-range-effect label
-  const label =  getAttackLabel(actor, attack);
-
-  // Inject the label into the dialog's HTML
-  const labelElement = $(`<div class="attack-label">Combo: ${label}</div>`);
-  html.find("section.body").prepend(labelElement); // Adjust selector if necessary
-});
-
-
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)

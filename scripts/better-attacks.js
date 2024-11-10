@@ -1331,8 +1331,8 @@ class MeasuredTemplateMM3 extends MeasuredTemplate {
 		}, []);
 		return containedIds.map((id) => canvas.tokens.get(id));
 	}
-}
-
+} 
+ 
 class TokenMM3 extends Token {
 	/**
 	 * Get an array of positions of grid spaces this token occupies.

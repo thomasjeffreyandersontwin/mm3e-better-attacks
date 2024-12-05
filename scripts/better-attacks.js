@@ -1,7 +1,7 @@
-Hooks.on("init", () => {
-	//CONFIG.Token.objectClass = TokenMM3;
-	//CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
-}) 
+import {createTemplateWithPreview} from "./template.mjs";
+
+let currentAttack = null;
+
 Hooks.on('ready', () => {
 	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
@@ -13,17 +13,14 @@ Hooks.on('ready', () => {
     } 
 
   })
-  Hooks.on('rollAttack', async (atk, token,strategie, altKey) => {
+  Hooks.on('rollAttack', (atk, token,strategie, altKey) => {
       console.log("hooking into attack  " + atk);
       console.log("hooking for token  " + token);
       if(atk.area && atk.area.has==true){
-    //    if(game.modules.get('warpgate')?.active)
-    //    {
-            await PlaceTemplateAndTargetActors(token, atk);
-    //    }
+          currentAttack = {token, atk}
       }
       if(game.modules.get('autoanimations')?.active) {
-        await triggerAnimationForAttack(atk, token);
+        triggerAnimationForAttack(atk, token);
       } 
   })
 	  
@@ -167,9 +164,9 @@ function playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source, attaq
 	}
 		
       let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
-      attackName = descriptor + "-" + range + "-" + attackType;
+      let attackName = descriptor + "-" + range + "-" + attackType;
       console.log("attempting to animate based on <descriptor>-<range>-<effect>" + attackName);
-      item = {
+      let item = {
         name: attackName,
         type: "spell"
       };
@@ -250,14 +247,7 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)
     if (range === 'Cone' || range === 'Burst' || range === 'Line' || range == 'Area') {
         
-        let templateOrTargets= await createPowerTemplate(token, attaque);
-        if(range=='Burst') 
-        {
-          targetedTokens = templateOrTargets
-        }
-      else{
-        targetedTokens = findTokensUnderTemplate(templateOrTargets);
-      }
+        let {template, targets: targetedTokens} = await createPowerTemplate(token, attaque);
         await game.user.updateTokenTargets([]);
         let targetedIds = [];
         
@@ -266,12 +256,11 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
         }
         await game.user.updateTokenTargets(targetedIds);
         
+        setTimeout( () => {
+          template.delete()
+      }
+      , (5000));
     }
-      setTimeout( () => {
-        const templateIds = canvas.scene.templates.contents.map(t => t.id);
-        canvas.scene.deleteEmbeddedDocuments("MeasuredTemplate", templateIds)
-    }
-    , (5000));
 }
 
 function GetEffectFromPower(power) {
@@ -449,79 +438,26 @@ async function createPowerTemplate(token, attaque) {
     if (t == "ray") {
         width = 2;
     }
-    let config = {
-        size: warpDistance * canvas.scene.grid.size / 100,
-        icon: 'modules/jb2a_patreon/Library/1st_Level/Grease/Grease_Dark_Brown_Thumb.webp',
-        label: 'Grease',
-        tag: 'slimy',
-        width: width ,
+    const templateData = {
         t: t,
-        drawIcon: true,
-        drawOutline: true,
-        interval: 0,
-        rememberControlled: true
+        distance: templateDistance * canvas.scene.grid.size / 100 ,
+        width: width,
+        fillColor: "#FF0000",
     };
-    let position = await warpgate.crosshairs.show(config);
-    const targets = warpgate.crosshairs.collect(position)
-    if (position) {
-        const templateData = {
-            t: t,
-            distance: templateDistance * canvas.scene.grid.size / 100 ,
-            x: position.x,
-            width: width,
-            y: position.y,
-            direction: position.direction,
-            fillColor: "#FF0000",
-        };
-
-        canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [templateData]);
-        const template = await waitForTemplatePlacement();
+    const {document, targets} = await createTemplateWithPreview(templateData)
+    if (document) {
+        const [template] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [document.toObject()]);
         console.log("Template placement completed at crosshair location.");
-        if(range=="Burst")
-        {
-          return targets
-        }
-        return template;
+        return {template, targets}
     } else {
         console.log("Template placement cancelled or no position selected.");
     }
 }
 
-function waitForTemplatePlacement() {
-      ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
-      return new Promise( (resolve) => {
-          // This hook is triggered once after a template is created.
-          Hooks.once("createMeasuredTemplate", (template) => {
-              console.log("Template placed:", template);
-              clearTimeout(timeout)
-              resolve(template);
-              
-          });
-          const timeout = setTimeout(() => {
-            ui.notifications.warn("Template placement timed out.");
-            reject(new Error("Template placement timed out after 10 seconds."));
-          }, 10000); 
-        });
-    }
-
 function waitForTemplatePlacementLater() {
       ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
-      return new Promise( (resolve) => {
-          // This hook is triggered once after a template is created.
-          Hooks.once("createMeasuredTemplate", (template) => {
-              console.log("Template placed:", template);
-               clearTimeout(timeout)
-               setTimeout(() => {        
-                  resolve(template);  // Resolve the promise after the delay   
-              }, 500);
-             // resolve(template);
-          }
-          );
-          const timeout = setTimeout(() => {
-            ui.notifications.warn("Template placement timed out.");
-            reject(new Error("Template placement timed out after 10 seconds."));
-          }, 10000); 
-        });
+      const {token, atk} = currentAttack;
+      return PlaceTemplateAndTargetActors(token, atk)
     }
 function getAreaShape(matchingPower) {
     for (const key in matchingPower.system.extras) {
@@ -538,113 +474,6 @@ function getAreaShape(matchingPower) {
     }
     return "Burst"
 }
-
-function findTokensUnderTemplate(template) {
-    const tokens = canvas.tokens.placeables;
-    // Get all tokens on the canvas
-    let targetedTokens = [];
-    
-
-    if (template.t === "circle") {
-        const radius = template.distance * canvas.scene.grid.distance
-
-        // Assuming template.distance holds the radius for circular templates
-        const centerX = template.x;
-        const centerY = template.y;
-        targetedTokens = tokens.filter(token => {
-            const distance = Math.sqrt((token.center.x - centerX) ** 2 + (token.center.y - centerY) ** 2);
-            const isWithin = distance <= radius + (token.w / 2);     
-            if (isWithin) {
-                console.log("Token within circle:", token.name);
-            }
-            return isWithin;
-
-        }
-        );
-    } else if (template.t === "rectangle") {
-        const left = template.x - ((template.width / 2) * canvas.scene.grid.size);
-        const top = template.y - ((template.height / 2) * canvas.scene.grid.size) ;
-        const right = template.x + ((template.width / 2) * canvas.scene.grid.size);
-        const bottom = template.y + ((template.width / 2) * canvas.scene.grid.size)
-        targetedTokens = tokens.filter(token => {
-            const tokenLeft = token.x;
-            const tokenRight = token.x + token.w;
-            const tokenTop = token.y;
-            const tokenBottom = token.y + token.h;
-            return tokenRight >= left && tokenLeft <= right && tokenBottom >= top && tokenTop <= bottom;
-        }
-        );
-    } else if (template.t === "cone") {
-        targetedTokens = tokens.filter(token => {
-            const angle = Math.atan2(token.y - template.y, token.x - template.x) - toRadians(template.direction);
-            let distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
-            const coneAngle = toRadians(90);
-            // Assuming a 90-degree cone angle for simplicity
-            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.grid.size;
-        }
-        );
-    } else if (template.t === "ray") {
-        targetedTokens = tokens.filter(token => {
-            let point = {
-                x: token.center.x,
-                y: token.center.y
-            };
-            const rayEndPoint = {
-                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.size),
-                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.size),
-            };
-            const templateWidthInPixels = canvas.scene.grid.size * (template.width / 2);
-
-            const distanceToRay = distanceFromLine(point.x, point.y, template.x, template.y, rayEndPoint.x, rayEndPoint.y);
-            return distanceToRay <= templateWidthInPixels;
-            ;
-        }
-        );
-    }
-    return targetedTokens;
-
-  function toRadians(angle) {
-    return angle * (Math.PI / 180);
-}
-
-function distanceFromLine(px, py, x0, y0, x1, y1) {
-    let A = px - x0;
-    let B = py - y0;
-    let C = x1 - x0;
-    let D = y1 - y0;
-
-    let dot = A * C + B * D;
-    let len_sq = C * C + D * D;
-    let param = -1;
-    if (len_sq != 0) {
-        //in case of 0 length line
-        param = dot / len_sq;
-    }
-
-    let xx, yy;
-
-    if (param < 0) {
-        xx = x0;
-        yy = y0;
-    } else if (param > 1) {
-        xx = x1;
-        yy = y1;
-    } else {
-        xx = x0 + param * C;
-        yy = y0 + param * D;
-    }
-
-    let dx = px - xx;
-    let dy = py - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-}
-}
-
-Hooks.on('renderActorDirectory', async function () {
-	if(!game.user.isGM) return;
-	const setting = game.settings.get("mutants-and-masterminds-3e", "font");
-	addCreateAttackFomPowerButtonToActorDirectory()
-});
 
 function addCreateAttackFomPowerButtonToActorDirectory(setting) {
   let addHtml = ``;
@@ -671,6 +500,11 @@ function addCreateAttackFomPowerButtonToActorDirectory(setting) {
     
   });
 }
+
+Hooks.on('renderActorDirectory', async function () {
+	if(!game.user.isGM) return;
+	addCreateAttackFomPowerButtonToActorDirectory()
+});
 
 
 async function CreateAttackForAllCharacters(){
@@ -742,8 +576,7 @@ async function deleteAllAttacks(selectedActor) {
   attackKeys.forEach(key => {
     updateData[`system.attaque.-=${key}`] = null;
   });
-  await selectedActor.update(updateData);
-  game.actors.set(selectedActor._id, selectedActor);
+  return selectedActor.update(updateData);
 }
 
 async function createUnarmedAttack(actor){
@@ -900,6 +733,7 @@ function getTypeFromPower(matchingPower, powerConfig){
   let isPerception = getPerceptionFromPower(matchingPower) || powerConfig.range=="Perception" 
 
 	 
+  let type;
   if(isArea){
     type = "area"
   }

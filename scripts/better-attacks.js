@@ -92,9 +92,11 @@ Hooks.on('ready', () => {
 		});
    });
 });
-
+Hooks.on('renderActorDirectory', async function () {
+	if(!game.user.isGM) return;
+	const setting = game.settings.get("mutants-and-masterminds-3e", "font");
+	addCreateAttackFomPowerButtonToActorDirectory()
 });
-
 
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
@@ -122,87 +124,6 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
       }
       , (5000));
     }
-}
-
-function GetEffectFromPower(power) {
-  let effect = power.system.effetsprincipaux;
-  if (effect=="")
-  {
-	  effect = power.name
-  }
-  effect = effect.replace(/\d+/g, '');
-
-const effects = [  
-				"Affliction", "Alternate Form", "Blast", "Burrowing", "Communication",   
-				"Comprehend", "Concealment", "Create", "Damage", "Dazzle", 
-				"Deflect", "Duplication", "Element Control", "Elongation", 
-				"Energy Absorption", "Energy Aura", "Energy Control", "Enhanced Trait", 
-				 "Environment", "Extra Limbs", "Feature", "Flight", "Force Field",
-				 "Growth", "Healing", "Illusion", "Immortality", "Immunity", 
-				 "Insubstantial", "Invisibility", "Leaping", "Luck Control",
-				 "Magic", "Mental Blast", "Mimic", "Mind Control", "Mind Reading",
-				 "Morph", "Move Object", "Movement", "Nullify", "Power-Lifting", 
-				 "Protection", "Quickness", "Regeneration", "Remote Sensing", 
-				 "Senses", "Shapeshift", "Shrinking", "Sleep", "Snare", 
-				 "Speed", "Strike", "Suffocation", "Summon", "Super-Speed",
-				 "Swimming", "Teleport", "Transform", "Variable", "Weaken", "Leaping", "Swinging", "Running"];
-  let matchedEffect = effects.find(effectEntry => effect.includes(effectEntry));
-  if(matchedEffect=="Blast"){
-    matchedEffect="Damage";
-  }
-  //if(matchedEffect=="Dazzle")
-  //{
-	//  matchedEffect = "Affliction"
-  //}
-  return matchedEffect;
-} 
-
-function GetAttackTypeFromAttack(attaque,power = undefined) {
-	let attackType = undefined;
-    if (attaque.isDmg == true) {
-        attackType = 'Damage';
-    }
-    if (attaque.isAffliction == true) {
-		if(power &&  power.system.effetsprincipaux.includes("Dazzle"))
-			attackType = 'Dazzle'
-		else{
-	        attackType = 'Affliction';
-		}
-    }
-    return attackType;
-}
-
-function GetRangeForPower(matchingPower) {
-  for (const key in matchingPower.system.extras) {
-      const item = matchingPower.system.extras[key];
-      if (item.name && item.name.includes("Cone")) {
-          return "Cone"
-      }
-      if (item.name && item.name.includes("Line")) {
-          return "Line"
-      }
-      if (item.name && item.name.includes("Burst")) {
-          return "Burst"
-      }
-      if(item.name && item.name.includes("Range"))
-      {
-        return "Ranged"
-      }
-  }
-  if(matchingPower.system.portee=="distance"){
-    return "Range"
-  }
-  if(matchingPower.system.portee=="perception"){
-    return "Range" 
-  }
-  if(matchingPower.system.portee=="contact"){
-    return "Melee"
-  }
-  if(matchingPower.system.portee=="personnelle"){
-  
-	  return "Personal"
-  }
-  return "Ranged";
 }
 
 function GetRangeForAttack(token, attaque) {
@@ -567,8 +488,6 @@ function getSaveFromResistance(matchingPower, resistance)
       }
     }
 }
-
-
 
 async function createAttackDetailsFromPower( matchingPower, actor)    { 
   
@@ -1051,71 +970,3 @@ game.actors.set(actor._id , actor)
 return actor.system.attaque[key]
 
 } 
-
-class MeasuredTemplateMM3 extends MeasuredTemplate {
-	/**
-	 * Get tokens that occupy squares highlighted by the template.
-	 *
-	 * @returns {Token[]} Array of tokens
-	 */
-	getTokensWithin() {
-		/** @type {[id: string]: Set<Point>} */
-		const tokens = Object.fromEntries(
-			canvas.tokens.placeables.map((token) => {
-				const positions = token.getPositions().map(({ x, y }) => `${x},${y}`);
-				return [token.id, new Set(positions)];
-			}),
-		);
-		const highlightPositions = canvas.interface.grid.getHighlightLayer(this.highlightId).positions;
-		const containedIds = Object.entries(tokens).reduce((acc, [id, tokenPositions]) => {
-			const intersection = highlightPositions.intersection(tokenPositions);
-			if (intersection.size > 0) acc.push(id);
-			return acc;
-		}, []);
-		return containedIds.map((id) => canvas.tokens.get(id));
-	}
-} 
- 
-class TokenMM3 extends Token {
-	/**
-	 * Get an array of positions of grid spaces this token occupies.
-	 *
-	 * @returns {Point[]}
-	 */
-	getPositions() {
-		// TODO: Refactor and shorten
-		const grid = canvas.grid;
-		const { x: ox, y: oy } = this.document;
-		const shape = this.shape;
-		const bounds = shape.getBounds();
-		bounds.x += ox;
-		bounds.y += oy;
-		bounds.fit(canvas.dimensions.rect);
-
-		// Identify grid space that have their center points covered by the template shape
-		const positions = [];
-		const [i0, j0, i1, j1] = grid.getOffsetRange(bounds);
-		for (let i = i0; i < i1; i++) {
-			for (let j = j0; j < j1; j++) {
-				const offset = { i, j };
-				const { x: cx, y: cy } = grid.getCenterPoint(offset);
-
-				// If the origin of the template is a grid space center, this grid space is highlighted
-				let covered = Math.max(Math.abs(cx - ox), Math.abs(cy - oy)) < 1;
-				if (!covered) {
-					for (let dx = -0.5; dx <= 0.5; dx += 0.5) {
-						for (let dy = -0.5; dy <= 0.5; dy += 0.5) {
-							if (shape.contains(cx - ox + dx, cy - oy + dy)) {
-								covered = true;
-								break;
-							}
-						}
-					}
-				}
-				if (!covered) continue;
-				positions.push(grid.getTopLeftPoint(offset));
-			}
-		}
-		return positions;
-	}
-}

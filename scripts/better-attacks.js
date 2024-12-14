@@ -1,48 +1,253 @@
-Hooks.on("init", () => {
-	//CONFIG.Token.objectClass = TokenMM3;
-	//CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
-}) 
+import {createTemplateWithPreview} from "./template.mjs";
+
+let currentAttack = null;
+
 Hooks.on('ready', () => {
 	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
-  console.log("hooking into character sheet render");
-  const attackSection = html.find(".attaque");
-  console.log(attackSection)
-  
-  const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
-  const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
-  
-  attackSection.append(convertButton);
-  attackSection.append(deleteConvertButton);
-  
-  
-  convertButton.on("click", (event) => {
-    event.preventDefault();
-    console.log(`Custom action triggered for ${app.actor.name}`);
-    // Define the behavior for this new button
-    CreateAttacksFromPowers(app.actor, app, false);  
-  });
-  
-  deleteConvertButton.on("click", (event) => {
-    event.preventDefault();
-    console.log(`Custom action triggered for ${app.actor.name}`);
-    // Define the behavior for this new button
-    CreateAttacksFromPowers(app.actor, app);  
-  });
+
+
+  Hooks.on('rollPower', async (atk, token,strategie, altKey) => {
+    if(game.modules.get('autoanimations')?.active) {
+      await triggerAnimationForPower(atk, token);
+    } 
+
+  })
+  Hooks.on('rollAttack', (atk, token,strategie, altKey) => {
+      console.log("hooking into attack  " + atk);
+      console.log("hooking for token  " + token);
+      if(atk.area && atk.area.has==true){
+          currentAttack = {token, atk}
+      }
+      if(game.modules.get('autoanimations')?.active) {
+        triggerAnimationForAttack(atk, token);
+      } 
+  })
+	  
+
+  Hooks.on("renderActorSheet", (app, html, data) => {
+	const actor = app.actor;
+	  
+	if (!actor) return; 
+		//add what animation will be called when clicking on an attack
+		html.find(".reorderDrop[data-type='attaque']").each(async (index, element) => {
+	        const attackId = $(element).find(".editAtk").data("id"); // Get the `data-id` from `.editAtk`
+	        
+	        const attackData = Object.values(actor.system.attaque).find(atk => atk._id === attackId);
+	        if (!attackData) return;
+	        const label = await getAttackLabel(actor, attackData);
+	        const labelElement = $(`
+	            <div class="attack-label-full-row" style="font-size: 0.9em; font-style: ; font-weight: normal; text-align: left; margin-top: -6px; margin-bottom: 8px; padding-left: 10px; width: 100%;">
+	                <b>Animation:</b> ${label}
+	            </div>
+	        `);
+	        $(element).after(labelElement);
+		});
+
+		//add what animation will be called when clicking each power
+	html.find(".pwr.summary").each((index, element) => {
+    const powerSummary = $(element);
+    const powerName = powerSummary.find(".pwrheader .header").text().trim();
+    
+    if (powerName) {
+        const itemId = powerSummary.data("item-id");
+        const power = app.actor.items.get(itemId);
+        const labelText = getPowerLabel(actor, power);
+        
+        // Create the label element without additional styling and add a newline after it
+        const labelElement = $(
+			`<div style="font-weight: normal; text-align: center">
+				<b> Animation:</b>${labelText}
+			</div><br>`);
+      //  const newlineElement = $('<br>');  // Newline element
+        
+        // Find the .data child inside .allData and insert label as the first child
+        const firstDataContainer = powerSummary.find(".allData .data").first();
+        if (firstDataContainer.length > 0) {
+            firstDataContainer.append(labelElement);
+        } else {
+            console.warn("Could not find the target .data element for inserting the label.");
+        }
+    }
 });
+
+
+
+
+	  
+		console.log("hooking into character sheet render");
+		const attackSection = html.find(".attaque");
+		console.log(attackSection)
+		
+		const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
+		const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
+		
+		attackSection.append(convertButton);
+		attackSection.append(deleteConvertButton);
+		
+		
+		convertButton.on("click", (event) => {
+		  event.preventDefault();
+		  console.log(`Custom action triggered for ${app.actor.name}`);
+		  // Define the behavior for this new button
+		  CreateAttacksFromPowers(app.actor, app, false);  
+		});
+		
+		deleteConvertButton.on("click", (event) => {
+		  event.preventDefault();
+		  console.log(`Custom action triggered for ${app.actor.name}`);
+		  // Define the behavior for this new button
+		  CreateAttacksFromPowers(app.actor, app);  
+		});
+   });
+});
+
+async function triggerAnimationForPower(power, source) {
+  let powerName = power.name;
+  await playAnimationByName(powerName, source);
+  playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source);
+}
+async function triggerAnimationForAttack(attaque, source) {
+    let power = source.actor.items.get(attaque.links.pwr)
+    let attackName = attaque.label;
+    await playAnimationByName(attackName, source);
+    playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source,attaque);
+}
+ 
+ function findAutoRecEntry(search){
+	const melee =  game.settings.get("autoanimations", "aaAutorec-melee")
+	const range =  game.settings.get("autoanimations", "aaAutorec-range")
+	const ontoken =   game.settings.get("autoanimations", "aaAutorec-ontoken")
+	const preset =   game.settings.get("autoanimations", "aaAutorec-preset")
+	const templatefx =   game.settings.get("autoanimations", "aaAutorec-templatefx")
+
+	const allEntries = [...melee, ...range, ...ontoken, ...preset, ...templatefx];
+	const matchedEntry = allEntries.find(entry => entry.label === search);
+	if(matchedEntry){
+		return matchedEntry.label
+	}
+	return matchedEntry;
+}
+function playDescriptorAnimationIfNamedAnimationDoesNotPlay(power, source, attaque=undefined) {
+  let animationEnded = false;
+  function onAnimationEnd() {
+    animationEnded = true;
+    Hooks.off("aa.animationEnd", onAnimationEnd);
+  }
+  Hooks.on("aa.animationEnd", onAnimationEnd);
+
+
+  //if an animation never ran then there was no name match of power, search descripter-range-attack combination of power instead
+  setTimeout(() => {
+	let descriptor
+	let options = {};
+	if(!power)
+	{
+		 ui.notifications.warn ("cannot play animation, no power linked to attack")
+	}
+    if (!power.system.descripteurs["0"]&& !power.system.descripteurs["1"] && !power.system.descripteurs["2"]) {
+      console.log("no descriptor found for power " + power.name);
+	    ui.notifications.warn ("cannot play animation, no descriptor found for power " + power.name)
+    }
+	else
+	{
+		descriptor = power.system.descripteurs["2"] ?power.system.descripteurs["2"]:power.system.descripteurs["1"]?power.system.descripteurs["1"]:power.system.descripteurs["0"]?power.system.descripteurs["0"]:"Energy"
+	}
+    if (!animationEnded && power && descriptor) {
+      let range 
+	  if(attaque)
+	  {
+		  range =GetRangeForAttack(source, attaque)
+	  }
+		else{
+		range= GetRangeForPower(power) ? GetRangeForPower(power) : "Ranged";
+	}
+		
+      let attackType = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+      let attackName = descriptor + "-" + range + "-" + attackType;
+      console.log("attempting to animate based on <descriptor>-<range>-<effect>" + attackName);
+      let item = {
+        name: attackName,
+        type: "spell"
+      };
+      const macro = game.macros.getName(attackName);
+      if (macro) {
+        macro.execute();
+      } else {
+        window.AutomatedAnimations.playAnimation(source, item, options);
+		animationEnded = false
+		function onDescAnimationEnd() {
+		    animationEnded = true;
+		    Hooks.off("aa.animationEnd", onDescAnimationEnd);
+		  }
+		  Hooks.on("aa.animationEnd", onDescAnimationEnd);
+		  setTimeout(() => {
+			  animationEnded = true
+			  ui.notifications.warn("cannot play animation, no macro or animation matching  <descriptor>-<range>-<effect> "+ attackName)
+		  },
+		  2000);
+      }
+    }
+  },
+    2000);
+}
+async function playAnimationByName(attackName, source) {
+  let item = {
+    name: attackName,
+    type: "spell"
+  };
+
+  let options = {};
+  const macro = game.macros.getName(attackName);
+   if (macro) {
+        await macro.execute();
+      } else {
+	  if (window.AutomatedAnimations) {
+	    console.log("attempting to run animation based on power name  " + attackName);
+	    await window.AutomatedAnimations.playAnimation(source, item, options);
+	  }
+  }
+}
+
+async function getAttackLabel(actor, attack) {
+    // Construct the descriptor-range-effect label
+	let range = GetRangeForAttack(actor, attack) || "No Range";
+	let power = actor.items.get(attack.links.pwr) 
+	return getPowerLabel(actor, power, range)
+}
+
+ function getPowerLabel(actor, power,range=undefined){
+	 if(power){
+		const powerName =power.name
+		let result = findAutoRecEntry(powerName)
+		if(result)
+		{
+			return result
+		}
+		if(!range)
+		{
+			range = GetRangeForPower(power) || "No Range";
+		}
+	 }
+	let effect;
+	let descriptor;
+	if(power){
+	    effect = GetEffectFromPower(power) ? GetEffectFromPower(power) : "Damage";
+        descriptor = power.system.descripteurs["2"] ?power.system.descripteurs["2"]:power.system.descripteurs["1"]?power.system.descripteurs["1"]:power.system.descripteurs["0"]?power.system.descripteurs["0"]:"No Descriptor"
+	}
+	else{
+		effect = "No Effect"
+		descriptor = "NA"
+	} 
+    return `${descriptor}-${range}-${effect}`;
+}
+
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)
     if (range === 'Cone' || range === 'Burst' || range === 'Line' || range == 'Area') {
         
-        let templateOrTargets= await createPowerTemplate(token, attaque);
-        if(range=='Burst') 
-        {
-          targetedTokens = templateOrTargets
-        }
-      else{
-        targetedTokens = findTokensUnderTemplate(templateOrTargets);
-      }
+        let {template, targets: targetedTokens} = await createPowerTemplate(token, attaque);
         await game.user.updateTokenTargets([]);
         let targetedIds = [];
         
@@ -51,13 +256,94 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
         }
         await game.user.updateTokenTargets(targetedIds);
         
+        setTimeout( () => {
+          template.delete()
+      }
+      , (5000));
     }
-      setTimeout( () => {
-        const templateIds = canvas.scene.templates.contents.map(t => t.id);
-        canvas.scene.deleteEmbeddedDocuments("MeasuredTemplate", templateIds)
-    }
-    , (5000));
 }
+
+function GetEffectFromPower(power) {
+  let effect = power.system.effetsprincipaux;
+  if (effect=="")
+  {
+	  effect = power.name
+  }
+  effect = effect.replace(/\d+/g, '');
+
+const effects = [  
+				"Affliction", "Alternate Form", "Blast", "Burrowing", "Communication",   
+				"Comprehend", "Concealment", "Create", "Damage", "Dazzle", 
+				"Deflect", "Duplication", "Element Control", "Elongation", 
+				"Energy Absorption", "Energy Aura", "Energy Control", "Enhanced Trait", 
+				 "Environment", "Extra Limbs", "Feature", "Flight", "Force Field",
+				 "Growth", "Healing", "Illusion", "Immortality", "Immunity", 
+				 "Insubstantial", "Invisibility", "Leaping", "Luck Control",
+				 "Magic", "Mental Blast", "Mimic", "Mind Control", "Mind Reading",
+				 "Morph", "Move Object", "Movement", "Nullify", "Power-Lifting", 
+				 "Protection", "Quickness", "Regeneration", "Remote Sensing", 
+				 "Senses", "Shapeshift", "Shrinking", "Sleep", "Snare", 
+				 "Speed", "Strike", "Suffocation", "Summon", "Super-Speed",
+				 "Swimming", "Teleport", "Transform", "Variable", "Weaken", "Leaping", "Swinging", "Running"];
+  let matchedEffect = effects.find(effectEntry => effect.includes(effectEntry));
+  if(matchedEffect=="Blast"){
+    matchedEffect="Damage";
+  }
+  //if(matchedEffect=="Dazzle")
+  //{
+	//  matchedEffect = "Affliction"
+  //}
+  return matchedEffect;
+} 
+
+function GetAttackTypeFromAttack(attaque,power = undefined) {
+	let attackType = undefined;
+    if (attaque.isDmg == true) {
+        attackType = 'Damage';
+    }
+    if (attaque.isAffliction == true) {
+		if(power &&  power.system.effetsprincipaux.includes("Dazzle"))
+			attackType = 'Dazzle'
+		else{
+	        attackType = 'Affliction';
+		}
+    }
+    return attackType;
+}
+
+function GetRangeForPower(matchingPower) {
+  for (const key in matchingPower.system.extras) {
+      const item = matchingPower.system.extras[key];
+      if (item.name && item.name.includes("Cone")) {
+          return "Cone"
+      }
+      if (item.name && item.name.includes("Line")) {
+          return "Line"
+      }
+      if (item.name && item.name.includes("Burst")) {
+          return "Burst"
+      }
+      if(item.name && item.name.includes("Range"))
+      {
+        return "Ranged"
+      }
+  }
+  if(matchingPower.system.portee=="distance"){
+    return "Range"
+  }
+  if(matchingPower.system.portee=="perception"){
+    return "Range" 
+  }
+  if(matchingPower.system.portee=="contact"){
+    return "Melee"
+  }
+  if(matchingPower.system.portee=="personnelle"){
+  
+	  return "Personal"
+  }
+  return "Ranged";
+}
+
 function GetRangeForAttack(token, attaque) {
   let pwr="";
   if(token.actor){
@@ -88,6 +374,7 @@ function GetRangeForAttack(token, attaque) {
     }
     return range;
 }
+
 async function createPowerTemplate(token, attaque) {
     let pwr = token.actor.items.get(attaque.links.pwr)
     let extras;
@@ -151,78 +438,27 @@ async function createPowerTemplate(token, attaque) {
     if (t == "ray") {
         width = 2;
     }
-    let config = {
-        size: warpDistance * canvas.scene.grid.size / 100,
-        icon: 'modules/jb2a_patreon/Library/1st_Level/Grease/Grease_Dark_Brown_Thumb.webp',
-        label: 'Grease',
-        tag: 'slimy',
-        width: width ,
+    const templateData = {
         t: t,
-        drawIcon: true,
-        drawOutline: true,
-        interval: 0,
-        rememberControlled: true
+        distance: templateDistance * canvas.scene.grid.size / 100 ,
+        width: width,
+        fillColor: "#FF0000",
     };
-    let position = await warpgate.crosshairs.show(config);
-    const targets = warpgate.crosshairs.collect(position)
-    if (position) {
-        const templateData = {
-            t: t,
-            distance: templateDistance * canvas.scene.grid.size / 100 ,
-            x: position.x,
-            width: width,
-            y: position.y,
-            direction: position.direction,
-            fillColor: "#FF0000",
-        };
-
-        canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [templateData]);
-        const template = await waitForTemplatePlacement();
+    const {document, targets} = await createTemplateWithPreview(templateData)
+    if (document) {
+        const [template] = await canvas.scene.createEmbeddedDocuments("MeasuredTemplate", [document.toObject()]);
         console.log("Template placement completed at crosshair location.");
-        if(range=="Burst")
-        {
-          return targets
-        }
-        return template;
+        return {template, targets}
     } else {
         console.log("Template placement cancelled or no position selected.");
     }
 }
-function waitForTemplatePlacement() {
-      ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
-      return new Promise( (resolve) => {
-          // This hook is triggered once after a template is created.
-          Hooks.once("createMeasuredTemplate", (template) => {
-              console.log("Template placed:", template);
-              clearTimeout(timeout)
-              resolve(template);
-              
-          });
-          const timeout = setTimeout(() => {
-            ui.notifications.warn("Template placement timed out.");
-            reject(new Error("Template placement timed out after 10 seconds."));
-          }, 10000); 
-        });
-}
+
 function waitForTemplatePlacementLater() {
       ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
-      return new Promise( (resolve) => {
-          // This hook is triggered once after a template is created.
-          Hooks.once("createMeasuredTemplate", (template) => {
-              console.log("Template placed:", template);
-               clearTimeout(timeout)
-               setTimeout(() => {        
-                  resolve(template);  // Resolve the promise after the delay   
-              }, 500);
-             // resolve(template);
-          }
-          );
-          const timeout = setTimeout(() => {
-            ui.notifications.warn("Template placement timed out.");
-            reject(new Error("Template placement timed out after 10 seconds."));
-          }, 10000); 
-        });
-}
+      const {token, atk} = currentAttack;
+      return PlaceTemplateAndTargetActors(token, atk)
+    }
 function getAreaShape(matchingPower) {
     for (const key in matchingPower.system.extras) {
         const item = matchingPower.system.extras[key];
@@ -238,109 +474,11 @@ function getAreaShape(matchingPower) {
     }
     return "Burst"
 }
-function findTokensUnderTemplate(template) {
-    const tokens = canvas.tokens.placeables;
-    // Get all tokens on the canvas
-    let targetedTokens = [];
-    
-
-    if (template.t === "circle") {
-        const radius = template.distance * canvas.scene.grid.distance
-
-        // Assuming template.distance holds the radius for circular templates
-        const centerX = template.x;
-        const centerY = template.y;
-        targetedTokens = tokens.filter(token => {
-            const distance = Math.sqrt((token.center.x - centerX) ** 2 + (token.center.y - centerY) ** 2);
-            const isWithin = distance <= radius + (token.w / 2);     
-            if (isWithin) {
-                console.log("Token within circle:", token.name);
-            }
-            return isWithin;
-
-        }
-        );
-    } else if (template.t === "rectangle") {
-        const left = template.x - ((template.width / 2) * canvas.scene.grid.size);
-        const top = template.y - ((template.height / 2) * canvas.scene.grid.size) ;
-        const right = template.x + ((template.width / 2) * canvas.scene.grid.size);
-        const bottom = template.y + ((template.width / 2) * canvas.scene.grid.size)
-        targetedTokens = tokens.filter(token => {
-            const tokenLeft = token.x;
-            const tokenRight = token.x + token.w;
-            const tokenTop = token.y;
-            const tokenBottom = token.y + token.h;
-            return tokenRight >= left && tokenLeft <= right && tokenBottom >= top && tokenTop <= bottom;
-        }
-        );
-    } else if (template.t === "cone") {
-        targetedTokens = tokens.filter(token => {
-            const angle = Math.atan2(token.y - template.y, token.x - template.x) - toRadians(template.direction);
-            let distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
-            const coneAngle = toRadians(90);
-            // Assuming a 90-degree cone angle for simplicity
-            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.grid.size;
-        }
-        );
-    } else if (template.t === "ray") {
-        targetedTokens = tokens.filter(token => {
-            let point = {
-                x: token.center.x,
-                y: token.center.y
-            };
-            const rayEndPoint = {
-                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.size),
-                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.size),
-            };
-            const templateWidthInPixels = canvas.scene.grid.size * (template.width / 2);
-
-            const distanceToRay = distanceFromLine(point.x, point.y, template.x, template.y, rayEndPoint.x, rayEndPoint.y);
-            return distanceToRay <= templateWidthInPixels;
-            ;
-        }
-        );
-    }
-    return targetedTokens;
-
-  function toRadians(angle) {
-    return angle * (Math.PI / 180);
-}
-
-function distanceFromLine(px, py, x0, y0, x1, y1) {
-    let A = px - x0;
-    let B = py - y0;
-    let C = x1 - x0;
-    let D = y1 - y0;
-
-    let dot = A * C + B * D;
-    let len_sq = C * C + D * D;
-    let param = -1;
-    if (len_sq != 0) {
-        //in case of 0 length line
-        param = dot / len_sq;
-    }
-
-    let xx, yy;
-
-    if (param < 0) {
-        xx = x0;
-        yy = y0;
-    } else if (param > 1) {
-        xx = x1;
-        yy = y1;
-    } else {
-        xx = x0 + param * C;
-        yy = y0 + param * D;
-    }
-
-    let dx = px - xx;
-    let dy = py - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-}
-}
 
 function addCreateAttackFomPowerButtonToActorDirectory(setting) {
   let addHtml = ``;
+
+
   $("section#actors footer.action-buttons").append(`<button class='convert-attack' ${addHtml}>${game.i18n.localize("MM3.IMPORTATIONS.ConvertFrom")}</button>`);
 
   $("section#actors footer.action-buttons button.convert-attack").on( "click", async function() {
@@ -355,26 +493,33 @@ function addCreateAttackFomPowerButtonToActorDirectory(setting) {
         cancel: {
           label: "Cancel",
           callback: () => console.log("User clicked OK.")
-        }
+        } 
       },
       default: "cancel",
      }).render(true);
     
   });
 }
+
+Hooks.on('renderActorDirectory', async function () {
+	if(!game.user.isGM) return;
+	addCreateAttackFomPowerButtonToActorDirectory()
+});
+
+
 async function CreateAttackForAllCharacters(){
   // Loop through all actors in the game
-  game.actors.contents.forEach(actor => {
+  for (actor of game.actors.contents){
     // Check if the actor is in a folder and if that folder is expanded (open)
   if (actor.folder && actor.folder.expanded) {
     // Assuming CreateAttacksFromPowers is a method on the actor or globally available
-    CreateAttacksFromPowers(actor,true).then(() => {
+     await CreateAttacksFromPowers(actor,null, true).then(() => {
         console.log(`CreateAttacksFromPowers applied to ${actor.name}`);
       }).catch(err => {
         console.error(`Error applying CreateAttacksFromPowers to ${actor.name}:`, err);
       });
     }
-  });
+  };
 }
 window.CreateAttackForAllCharacters = CreateAttackForAllCharacters; 
 
@@ -431,8 +576,7 @@ async function deleteAllAttacks(selectedActor) {
   attackKeys.forEach(key => {
     updateData[`system.attaque.-=${key}`] = null;
   });
-  await selectedActor.update(updateData);
-  game.actors.set(selectedActor._id, selectedActor);
+  return selectedActor.update(updateData);
 }
 
 async function createUnarmedAttack(actor){
@@ -513,6 +657,9 @@ function getSaveFromResistance(matchingPower, resistance)
       }
     }
 }
+
+
+
 async function createAttackDetailsFromPower( matchingPower, actor)    { 
   
 	
@@ -586,6 +733,7 @@ function getTypeFromPower(matchingPower, powerConfig){
   let isPerception = getPerceptionFromPower(matchingPower) || powerConfig.range=="Perception" 
 
 	 
+  let type;
   if(isArea){
     type = "area"
   }
@@ -976,12 +1124,13 @@ let updates = {};
 if (key) {
   updates[`system.attaque.${key}`] = newAttackData;
   await actor.update(updates);
-} else {
+} else { 
   const attacks = actor.system.attaque;
   let newAttack ={}
   let attackKeys = Object.keys(attacks);
   key = attackKeys.length > 0 ? Math.max(...attackKeys) : 0;   
   newAttack[`system.attaque.${key+1}`] = newAttackData
+  key =key+1
   console.log("new attack" + newAttackData)
   await actor.update(newAttack);
   console.log(newAttack)
@@ -1016,8 +1165,8 @@ class MeasuredTemplateMM3 extends MeasuredTemplate {
 		}, []);
 		return containedIds.map((id) => canvas.tokens.get(id));
 	}
-}
-
+} 
+ 
 class TokenMM3 extends Token {
 	/**
 	 * Get an array of positions of grid spaces this token occupies.

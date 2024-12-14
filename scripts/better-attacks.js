@@ -1,103 +1,35 @@
-import {createTemplateWithPreview} from "./template.mjs";
-
-let currentAttack = null;
-
+Hooks.on("init", () => {
+	//CONFIG.Token.objectClass = TokenMM3;
+	//CONFIG.MeasuredTemplate.objectClass = MeasuredTemplateMM3;
+}) 
 Hooks.on('ready', () => {
 	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
-
-
-  Hooks.on('rollAttack', async (atk, token,strategie, altKey) => {
-      console.log("hooking into attack  " + atk);
-      console.log("hooking for token  " + token);
-      if(atk.area && atk.area.has==true){
-        await PlaceTemplateAndTargetActors(token, atk);
-      }
-  })
-	  
-
-  Hooks.on("renderActorSheet", (app, html, data) => {
-	const actor = app.actor;
-	  
-	if (!actor) return; 
-		//add what animation will be called when clicking on an attack
-		html.find(".reorderDrop[data-type='attaque']").each(async (index, element) => {
-	        const attackId = $(element).find(".editAtk").data("id"); // Get the `data-id` from `.editAtk`
-	        
-	        const attackData = Object.values(actor.system.attaque).find(atk => atk._id === attackId);
-	        if (!attackData) return;
-	        const label = await getAttackLabel(actor, attackData);
-	        const labelElement = $(`
-	            <div class="attack-label-full-row" style="font-size: 0.9em; font-style: ; font-weight: normal; text-align: left; margin-top: -6px; margin-bottom: 8px; padding-left: 10px; width: 100%;">
-	                <b>Animation:</b> ${label}
-	            </div>
-	        `);
-	        $(element).after(labelElement);
-		});
-
-		//add what animation will be called when clicking each power
-	html.find(".pwr.summary").each((index, element) => {
-    const powerSummary = $(element);
-    const powerName = powerSummary.find(".pwrheader .header").text().trim();
-    
-    if (powerName) {
-        const itemId = powerSummary.data("item-id");
-        const power = app.actor.items.get(itemId);
-        const labelText = getPowerLabel(actor, power);
-        
-        // Create the label element without additional styling and add a newline after it
-        const labelElement = $(
-			`<div style="font-weight: normal; text-align: center">
-				<b> Animation:</b>${labelText}
-			</div><br>`);
-      //  const newlineElement = $('<br>');  // Newline element
-        
-        // Find the .data child inside .allData and insert label as the first child
-        const firstDataContainer = powerSummary.find(".allData .data").first();
-        if (firstDataContainer.length > 0) {
-            firstDataContainer.append(labelElement);
-        } else {
-            console.warn("Could not find the target .data element for inserting the label.");
-        }
-    }
+  console.log("hooking into character sheet render");
+  const attackSection = html.find(".attaque");
+  console.log(attackSection)
+  
+  const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
+  const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
+  
+  attackSection.append(convertButton);
+  attackSection.append(deleteConvertButton);
+  
+  
+  convertButton.on("click", (event) => {
+    event.preventDefault();
+    console.log(`Custom action triggered for ${app.actor.name}`);
+    // Define the behavior for this new button
+    CreateAttacksFromPowers(app.actor, app, false);  
+  });
+  
+  deleteConvertButton.on("click", (event) => {
+    event.preventDefault();
+    console.log(`Custom action triggered for ${app.actor.name}`);
+    // Define the behavior for this new button
+    CreateAttacksFromPowers(app.actor, app);  
+  });
 });
-
-
-
-
-	  
-		console.log("hooking into character sheet render");
-		const attackSection = html.find(".attaque");
-		console.log(attackSection)
-		
-		const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
-		const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
-		
-		attackSection.append(convertButton);
-		attackSection.append(deleteConvertButton);
-		
-		
-		convertButton.on("click", (event) => {
-		  event.preventDefault();
-		  console.log(`Custom action triggered for ${app.actor.name}`);
-		  // Define the behavior for this new button
-		  CreateAttacksFromPowers(app.actor, app, false);  
-		});
-		
-		deleteConvertButton.on("click", (event) => {
-		  event.preventDefault();
-		  console.log(`Custom action triggered for ${app.actor.name}`);
-		  // Define the behavior for this new button
-		  CreateAttacksFromPowers(app.actor, app);  
-		});
-   });
-});
-Hooks.on('renderActorDirectory', async function () {
-	if(!game.user.isGM) return;
-	const setting = game.settings.get("mutants-and-masterminds-3e", "font");
-	addCreateAttackFomPowerButtonToActorDirectory()
-});
-
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)
@@ -119,13 +51,13 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
         }
         await game.user.updateTokenTargets(targetedIds);
         
-        setTimeout( () => {
-          template.delete()
-      }
-      , (5000));
     }
+      setTimeout( () => {
+        const templateIds = canvas.scene.templates.contents.map(t => t.id);
+        canvas.scene.deleteEmbeddedDocuments("MeasuredTemplate", templateIds)
+    }
+    , (5000));
 }
-
 function GetRangeForAttack(token, attaque) {
   let pwr="";
   if(token.actor){
@@ -156,7 +88,6 @@ function GetRangeForAttack(token, attaque) {
     }
     return range;
 }
-
 async function createPowerTemplate(token, attaque) {
     let pwr = token.actor.items.get(attaque.links.pwr)
     let extras;
@@ -257,7 +188,6 @@ async function createPowerTemplate(token, attaque) {
         console.log("Template placement cancelled or no position selected.");
     }
 }
-
 function waitForTemplatePlacement() {
       ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
       return new Promise( (resolve) => {
@@ -273,8 +203,7 @@ function waitForTemplatePlacement() {
             reject(new Error("Template placement timed out after 10 seconds."));
           }, 10000); 
         });
-    }
-
+}
 function waitForTemplatePlacementLater() {
       ui.notifications.warn("Waiting for template placement to target tokens before rolling attack");
       return new Promise( (resolve) => {
@@ -293,7 +222,7 @@ function waitForTemplatePlacementLater() {
             reject(new Error("Template placement timed out after 10 seconds."));
           }, 10000); 
         });
-    }
+}
 function getAreaShape(matchingPower) {
     for (const key in matchingPower.system.extras) {
         const item = matchingPower.system.extras[key];
@@ -309,11 +238,109 @@ function getAreaShape(matchingPower) {
     }
     return "Burst"
 }
+function findTokensUnderTemplate(template) {
+    const tokens = canvas.tokens.placeables;
+    // Get all tokens on the canvas
+    let targetedTokens = [];
+    
+
+    if (template.t === "circle") {
+        const radius = template.distance * canvas.scene.grid.distance
+
+        // Assuming template.distance holds the radius for circular templates
+        const centerX = template.x;
+        const centerY = template.y;
+        targetedTokens = tokens.filter(token => {
+            const distance = Math.sqrt((token.center.x - centerX) ** 2 + (token.center.y - centerY) ** 2);
+            const isWithin = distance <= radius + (token.w / 2);     
+            if (isWithin) {
+                console.log("Token within circle:", token.name);
+            }
+            return isWithin;
+
+        }
+        );
+    } else if (template.t === "rectangle") {
+        const left = template.x - ((template.width / 2) * canvas.scene.grid.size);
+        const top = template.y - ((template.height / 2) * canvas.scene.grid.size) ;
+        const right = template.x + ((template.width / 2) * canvas.scene.grid.size);
+        const bottom = template.y + ((template.width / 2) * canvas.scene.grid.size)
+        targetedTokens = tokens.filter(token => {
+            const tokenLeft = token.x;
+            const tokenRight = token.x + token.w;
+            const tokenTop = token.y;
+            const tokenBottom = token.y + token.h;
+            return tokenRight >= left && tokenLeft <= right && tokenBottom >= top && tokenTop <= bottom;
+        }
+        );
+    } else if (template.t === "cone") {
+        targetedTokens = tokens.filter(token => {
+            const angle = Math.atan2(token.y - template.y, token.x - template.x) - toRadians(template.direction);
+            let distanceToPoint = Math.sqrt((token.x - template.x) ** 2 + (token.y - template.y) ** 2);
+            const coneAngle = toRadians(90);
+            // Assuming a 90-degree cone angle for simplicity
+            return Math.abs(angle) <= coneAngle / 2 && distanceToPoint <= (template.distance/1.4) * canvas.scene.grid.size;
+        }
+        );
+    } else if (template.t === "ray") {
+        targetedTokens = tokens.filter(token => {
+            let point = {
+                x: token.center.x,
+                y: token.center.y
+            };
+            const rayEndPoint = {
+                x: template.x + Math.cos(toRadians(template.direction)) * ((template.distance /1.4) * canvas.scene.size),
+                y: template.y + Math.sin(toRadians(template.direction)) * ((template.distance/1.4) * canvas.scene.size),
+            };
+            const templateWidthInPixels = canvas.scene.grid.size * (template.width / 2);
+
+            const distanceToRay = distanceFromLine(point.x, point.y, template.x, template.y, rayEndPoint.x, rayEndPoint.y);
+            return distanceToRay <= templateWidthInPixels;
+            ;
+        }
+        );
+    }
+    return targetedTokens;
+
+  function toRadians(angle) {
+    return angle * (Math.PI / 180);
+}
+
+function distanceFromLine(px, py, x0, y0, x1, y1) {
+    let A = px - x0;
+    let B = py - y0;
+    let C = x1 - x0;
+    let D = y1 - y0;
+
+    let dot = A * C + B * D;
+    let len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq != 0) {
+        //in case of 0 length line
+        param = dot / len_sq;
+    }
+
+    let xx, yy;
+
+    if (param < 0) {
+        xx = x0;
+        yy = y0;
+    } else if (param > 1) {
+        xx = x1;
+        yy = y1;
+    } else {
+        xx = x0 + param * C;
+        yy = y0 + param * D;
+    }
+
+    let dx = px - xx;
+    let dy = py - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+}
 
 function addCreateAttackFomPowerButtonToActorDirectory(setting) {
   let addHtml = ``;
-
-
   $("section#actors footer.action-buttons").append(`<button class='convert-attack' ${addHtml}>${game.i18n.localize("MM3.IMPORTATIONS.ConvertFrom")}</button>`);
 
   $("section#actors footer.action-buttons button.convert-attack").on( "click", async function() {
@@ -328,28 +355,26 @@ function addCreateAttackFomPowerButtonToActorDirectory(setting) {
         cancel: {
           label: "Cancel",
           callback: () => console.log("User clicked OK.")
-        } 
+        }
       },
       default: "cancel",
      }).render(true);
     
   });
 }
-
-
 async function CreateAttackForAllCharacters(){
   // Loop through all actors in the game
-  for (actor of game.actors.contents){
+  game.actors.contents.forEach(actor => {
     // Check if the actor is in a folder and if that folder is expanded (open)
   if (actor.folder && actor.folder.expanded) {
     // Assuming CreateAttacksFromPowers is a method on the actor or globally available
-     await CreateAttacksFromPowers(actor,null, true).then(() => {
+    CreateAttacksFromPowers(actor,true).then(() => {
         console.log(`CreateAttacksFromPowers applied to ${actor.name}`);
       }).catch(err => {
         console.error(`Error applying CreateAttacksFromPowers to ${actor.name}:`, err);
       });
     }
-  };
+  });
 }
 window.CreateAttackForAllCharacters = CreateAttackForAllCharacters; 
 
@@ -488,7 +513,6 @@ function getSaveFromResistance(matchingPower, resistance)
       }
     }
 }
-
 async function createAttackDetailsFromPower( matchingPower, actor)    { 
   
 	
@@ -952,13 +976,12 @@ let updates = {};
 if (key) {
   updates[`system.attaque.${key}`] = newAttackData;
   await actor.update(updates);
-} else { 
+} else {
   const attacks = actor.system.attaque;
   let newAttack ={}
   let attackKeys = Object.keys(attacks);
   key = attackKeys.length > 0 ? Math.max(...attackKeys) : 0;   
   newAttack[`system.attaque.${key+1}`] = newAttackData
-  key =key+1
   console.log("new attack" + newAttackData)
   await actor.update(newAttack);
   console.log(newAttack)
@@ -970,3 +993,71 @@ game.actors.set(actor._id , actor)
 return actor.system.attaque[key]
 
 } 
+
+class MeasuredTemplateMM3 extends MeasuredTemplate {
+	/**
+	 * Get tokens that occupy squares highlighted by the template.
+	 *
+	 * @returns {Token[]} Array of tokens
+	 */
+	getTokensWithin() {
+		/** @type {[id: string]: Set<Point>} */
+		const tokens = Object.fromEntries(
+			canvas.tokens.placeables.map((token) => {
+				const positions = token.getPositions().map(({ x, y }) => `${x},${y}`);
+				return [token.id, new Set(positions)];
+			}),
+		);
+		const highlightPositions = canvas.interface.grid.getHighlightLayer(this.highlightId).positions;
+		const containedIds = Object.entries(tokens).reduce((acc, [id, tokenPositions]) => {
+			const intersection = highlightPositions.intersection(tokenPositions);
+			if (intersection.size > 0) acc.push(id);
+			return acc;
+		}, []);
+		return containedIds.map((id) => canvas.tokens.get(id));
+	}
+}
+
+class TokenMM3 extends Token {
+	/**
+	 * Get an array of positions of grid spaces this token occupies.
+	 *
+	 * @returns {Point[]}
+	 */
+	getPositions() {
+		// TODO: Refactor and shorten
+		const grid = canvas.grid;
+		const { x: ox, y: oy } = this.document;
+		const shape = this.shape;
+		const bounds = shape.getBounds();
+		bounds.x += ox;
+		bounds.y += oy;
+		bounds.fit(canvas.dimensions.rect);
+
+		// Identify grid space that have their center points covered by the template shape
+		const positions = [];
+		const [i0, j0, i1, j1] = grid.getOffsetRange(bounds);
+		for (let i = i0; i < i1; i++) {
+			for (let j = j0; j < j1; j++) {
+				const offset = { i, j };
+				const { x: cx, y: cy } = grid.getCenterPoint(offset);
+
+				// If the origin of the template is a grid space center, this grid space is highlighted
+				let covered = Math.max(Math.abs(cx - ox), Math.abs(cy - oy)) < 1;
+				if (!covered) {
+					for (let dx = -0.5; dx <= 0.5; dx += 0.5) {
+						for (let dy = -0.5; dy <= 0.5; dy += 0.5) {
+							if (shape.contains(cx - ox + dx, cy - oy + dy)) {
+								covered = true;
+								break;
+							}
+						}
+					}
+				}
+				if (!covered) continue;
+				positions.push(grid.getTopLeftPoint(offset));
+			}
+		}
+		return positions;
+	}
+}

@@ -3,21 +3,29 @@ import {createTemplateWithPreview} from "./template.mjs";
 let currentAttack = null;
 
 Hooks.on('ready', () => {
-	
   game.waitForTemplatePlacementLater = waitForTemplatePlacementLater;
   Hooks.on("renderActorSheet", (app, html, data) => {
-	const actor = app.actor;
-	  
-	if (!actor) return; 		
-		deleteConvertButton.on("click", (event) => {
-		  event.preventDefault();
-		  console.log(`Custom action triggered for ${app.actor.name}`);
-		  // Define the behavior for this new button
-		  CreateAttacksFromPowers(app.actor, app);  
-		});
-   });
+    const actor = app.actor;
+    if (!actor) return; 	
+    	
+    const attackSection = html.find(".attaque");
+    const convertButton = $(`<a class="add" data-type="convert-action">Convert Powers</a>`);
+    const deleteConvertButton = $(`<a class="add" data-type="convert-delete-action">Delete then Convert Powers</a>`);
+    
+    attackSection.append(convertButton);
+    attackSection.append(deleteConvertButton);
+    
+    convertButton.on("click", (event) => {
+      event.preventDefault();
+      CreateAttacksFromPowers(app.actor, app, false);  
+    });
+    
+    deleteConvertButton.on("click", (event) => {
+      event.preventDefault();
+      CreateAttacksFromPowers(app.actor, app);  
+    });
+  });
 });
-
 
 async function PlaceTemplateAndTargetActors(token, attaque) {
     let range = GetRangeForAttack(token, attaque)

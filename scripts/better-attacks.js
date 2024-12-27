@@ -199,7 +199,7 @@ Hooks.on('ready', () => {
   });
 }); 
 
-Hooks.on('rollAttack', (atk, token,strategie, altKey) => {
+Hooks.on('rollAttack', (atk, token,strategie, altKey) => {  
       console.log("hooking into attack  " + atk);
       console.log("hooking for token  " + token);
       if(atk.area && atk.area.has==true){
@@ -837,6 +837,9 @@ function determineAffliction(powerConfig, matchingPower) {
 	        }
 		}
     }  
+	if(!affliction.result){
+		 affliction = presetAfflictions[0].afflictions
+	}
 	if(affliction.result[2] && affliction.result[2].status[0]==undefined){
 				affliction.result.splice(2,1)
 			}

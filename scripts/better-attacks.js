@@ -222,6 +222,7 @@ async function PlaceTemplateAndTargetActors(token, attaque) {
 			targetedIds.push(token.id);
 		}
 		await game.user.updateTokenTargets(targetedIds);
+		await   token.control({ releaseOthers: true });
 		await new Promise(resolve => setTimeout(resolve, 10));
 		
         setTimeout( () => {

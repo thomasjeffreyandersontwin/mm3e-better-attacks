@@ -831,7 +831,7 @@ function startEnhancedTargeting(token, attack, originalEvent) {
   targetingAttack = attack;
   
   // Clear all existing targets at start of new attack
-  game.user.updateTokenTargets([]);
+  game.user.targets.clear()
   
   // Change cursor to crosshair
   originalCursor = document.body.style.cursor;
@@ -953,7 +953,7 @@ function onTargetingMouseMove(event) {
  */
 async function onTargetingClick(event) {
 	  if (!targetingMode || !targetingToken || !targetingAttack) return;
-  
+
   const pos = event.data.getLocalPosition(canvas.tokens);
   const clickedToken = canvas.tokens.placeables.find(t => {
     const bounds = t.bounds;
@@ -962,7 +962,18 @@ async function onTargetingClick(event) {
   });
   
   const isAltClick = event.data.originalEvent.altKey;
+  const isShiftClick = event.data.originalEvent.shiftKey;
   const isAreaAttack = targetingAttack.area && targetingAttack.area.has;
+  
+  // If shift or alt click on a token, let the original system handle it
+  if ((isShiftClick || isAltClick) && clickedToken) {
+    // Exit targeting mode first
+    exitTargetingMode(false, false);
+    
+    // Let the original click event propagate to the token
+    // This will trigger the normal shift/alt click dialogs
+    return;
+  }
   
   // Handle area attacks first (they may or may not have a clicked token)
   if (isAreaAttack) {
@@ -996,8 +1007,8 @@ async function onTargetingClick(event) {
     const range = getAttackRange(targetingAttack);
     const inRange = isInRange(distance, range);
     
-    if (isAltClick) {
-      // Alt+Click: Add to targets (targets were cleared when attack button was clicked)
+    if (isAltClick && !isShiftClick) {
+      // Alt+Click (but not Shift+Alt): Add to targets (targets were cleared when attack button was clicked)
       const currentTargets = Array.from(game.user.targets);
       const targetIds = currentTargets.map(t => t.id);
       
@@ -1036,14 +1047,14 @@ async function onTargetingClick(event) {
     }
   } else if (clickedToken && clickedToken === targetingToken) {
     // Handle self-targeting
-    if (isAltClick) {
-      // Alt+Click: Add self to targets
+    if (isAltClick && !isShiftClick) {
+      // Alt+Click (but not Shift+Alt): Add self to targets
       const currentTargets = Array.from(game.user.targets);
       const targetIds = currentTargets.map(t => t.id);
       
       if (!targetIds.includes(clickedToken.id)) {
         targetIds.push(clickedToken.id);
-        await game.user.updateTokenTargets(targetIds);
+        await game.user.targets.add(targetIds);
         ui.notifications.info(`${clickedToken.name} added to targets.`);
       } else {
         ui.notifications.info(`${clickedToken.name} is already targeted.`);
@@ -1117,7 +1128,7 @@ function exitTargetingMode(clearTargets = false, showCancelMessage = true) {
   
   // Clear targets only if requested (when canceling, not when attacking)
   if (clearTargets) {
-    game.user.updateTokenTargets([]);
+    game.user.targets.clear();
   }
   
   // Reset variables
@@ -1468,7 +1479,7 @@ async function placeTemplateDirectly(token, attaque, position) {
   canvas.tokens.activate();
 
   // Follow the exact same pattern as PlaceTemplateAndTargetActors
-  await game.user.updateTokenTargets([]);
+  await game.user.targets.clear();
   let targetedIds = [];
   
   // Wait for template to be fully processed (same as original code)
@@ -2003,6 +2014,7 @@ async function CreateAttacksFromPowers(actor = canvas.tokens.controlled[0]?.acto
     console.log("No actor selected.");
     return;
   }
+	console.log("actor selected. We do this ya ya ya !");
   let context={}
   context.actor = actor;
   context.items = actor.items;
@@ -2264,13 +2276,13 @@ function saveLinkedAttack(actor, matchingPower) {
   
   if (linkedPowerConfig && linkedPowerConfig.attackType === "damage") {
     linkedAttack.isDmg = true;
-  linkedAttack.save.dmg.effet = matchingPower.system.cout.rang.toString();
+  linkedAttack.save.dmg.effet = matchingPower.system.cout.total.toString();
     linkedAttack.save.dmg.type = getSaveFromResistance(matchingPower, linkedPowerConfig.resistance);
   } 
   if (linkedPowerConfig && linkedPowerConfig.attackType === "weaken") {
     linkedAttack.isWeaken = true;
     linkedAttack.save.weaken.type = getSaveFromResistance(matchingPower, linkedPowerConfig.resistance);
-    linkedAttack.save.weaken.effet = matchingPower.system.cout.rang.toString();
+    linkedAttack.save.weaken.effet = matchingPower.system.cout.total.toString();
     const targetAbility = getWeakenTargetAbility(matchingPower);
     linkedAttack.repeat.weaken = {
       targetAbility: targetAbility

@@ -1,0 +1,289 @@
+<form class="measurement-calculator">
+  <header class="sheet-header">
+    <h1 class="title">Measurement Lookup & Calculator</h1>
+  </header>
+
+  <!-- Simple Lookup Section -->
+  <div class="form-section">
+    <h3>Simple Lookup</h3>
+    <div class="form-row">
+      <label for="rank-input">Rank:</label>
+      <input type="number" id="rank-input" placeholder="Enter rank (-5 to 30+)">
+      <label for="measurement-type">Type:</label>
+      <select id="measurement-type">
+        <option value="">Select Type</option>
+        {{#each measurementTypes}}
+        <option value="{{value}}">{{label}}</option>
+        {{/each}}
+      </select>
+      <label>Result:</label>
+      <div id="measurement-result" class="result-display"></div>
+    </div>
+  </div>
+
+  <!-- Advanced Calculations Section -->
+  <div class="form-section">
+    <h3>Effect Value Calculator</h3>
+    
+    <!-- Distance Calculation -->
+    <div class="calculation-row">
+      <h4>Distance</h4>
+      <div class="formula">
+        <select id="time-lookup" class="formula-input">
+          <option value="">Select Time</option>
+          {{#each timeValues}}
+          <option value="{{rank}}">{{value}}</option>
+          {{/each}}
+        </select>
+        <span class="operator">+</span>
+        <input type="number" id="speed-input" placeholder="Speed Rank" class="formula-input">
+        <span class="equals">=</span>
+        <div id="distance-result" class="result-display formula-result"></div>
+      </div>
+      <div class="formula-label">Distance Rank = Time Lookup + Speed Rank</div>
+    </div>
+
+    <!-- Time Calculation -->
+    <div class="calculation-row">
+      <h4>Time</h4>
+      <div class="formula">
+        <select id="distance-lookup" class="formula-input">
+          <option value="">Select Distance</option>
+          {{#each distanceValues}}
+          <option value="{{rank}}">{{value}}</option>
+          {{/each}}
+        </select>
+        <span class="operator">-</span>
+        <input type="number" id="speed-input2" placeholder="Speed Rank" class="formula-input">
+        <span class="equals">=</span>
+        <div id="time-result" class="result-display formula-result"></div>
+      </div>
+      <div class="formula-label">Time Rank = Distance Lookup - Speed Rank</div>
+    </div>
+
+    <!-- Throwing Distance Calculation -->
+    <div class="calculation-row">
+      <h4>Throwing Distance</h4>
+      <div class="formula">
+        <input type="number" id="strength-input" placeholder="Strength Rank" class="formula-input">
+        <span class="operator">-</span>
+        <select id="mass-lookup" class="formula-input">
+          <option value="">Select Mass</option>
+          {{#each massValues}}
+          <option value="{{rank}}">{{value}}</option>
+          {{/each}}
+        </select>
+        <span class="equals">=</span>
+        <div id="throwing-distance-result" class="result-display formula-result"></div>
+      </div>
+      <div class="formula-label">Throwing Distance Rank = Strength Rank - Mass Lookup</div>
+    </div>
+  </div>
+
+  <!-- Reset Button -->
+  <div class="form-group">
+    <button type="button" id="reset-button" class="reset-btn">Reset All</button>
+  </div>
+</form>
+
+<style>
+@import url("https://fonts.googleapis.com/css?family=Bangers&display=swap");
+@import url("https://fonts.googleapis.com/css?family=Sriracha&display=swap");
+
+.measurement-calculator {
+  background: #EBEBEB;
+  color: #363B44;
+  font-family: Sriracha;
+  font-weight: bold;
+  padding: 0;
+}
+
+.measurement-calculator .sheet-header {
+  display: grid;
+  grid-template-columns: 1fr;
+  border-style: solid;
+  border-width: 2px;
+  border-radius: 15px 15px 0px 0px;
+  background: url("../../systems/mutants-and-masterminds-3e/assets/fond.webp") #E0AC00;
+  background-blend-mode: overlay, multiply, multiply;
+  padding: 15px;
+  text-align: center;
+}
+
+.measurement-calculator .title {
+  font-size: 2rem;
+  color: #EBEBEB;
+  text-shadow: 2px 2px 0px #DA3A2F, 1px 1px 0px #363B44;
+  font-family: "Bangers";
+  margin: 0;
+}
+
+.form-section {
+  margin: 10px;
+  padding: 15px;
+  border: 2px solid #363B44;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.form-section h3 {
+  margin-top: 0;
+  color: #363B44;
+  border-bottom: 2px solid #E0AC00;
+  padding-bottom: 8px;
+  font-family: "Bangers";
+  font-size: 1.2rem;
+  text-shadow: 1px 1px 0px #DA3A2F;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.form-row label {
+  font-weight: bold;
+  color: #363B44;
+  text-align: right;
+  padding-right: 5px;
+}
+
+.form-row input[type="number"] {
+  padding: 8px;
+  border: 2px solid #363B44;
+  border-radius: 5px;
+  background: #EBEBEB;
+  color: #363B44;
+  font-family: Sriracha;
+  font-weight: bold;
+}
+
+.form-row input[type="number"]:focus,
+.form-row select:focus {
+  border-color: #E0AC00;
+  box-shadow: 0 0 5px #E0AC00;
+}
+
+.result-display {
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #E0AC00 0%, #f4d03f 100%);
+  border: 2px solid #363B44;
+  border-radius: 5px;
+  font-weight: bold;
+  color: #363B44;
+  text-align: center;
+  min-width: 150px;
+}
+
+.calculation-row {
+  margin-bottom: 15px;
+  padding: 15px;
+  background: white;
+  border: 2px solid #363B44;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.calculation-row h4 {
+  margin-top: 0;
+  color: #363B44;
+  font-family: "Bangers";
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 0px #DA3A2F;
+  border-bottom: 1px solid #E0AC00;
+  padding-bottom: 5px;
+}
+
+.formula {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+/* Style only input elements in formulas, not select elements */
+.formula-input[type="number"] {
+  padding: 8px;
+  border: 2px solid #363B44;
+  border-radius: 5px;
+  background: #EBEBEB;
+  color: #363B44;
+  font-family: Sriracha;
+  font-weight: bold;
+}
+
+.formula-input[type="number"]:focus {
+  border-color: #E0AC00;
+  box-shadow: 0 0 5px #E0AC00;
+}
+
+.operator,
+.equals {
+  font-size: 20px;
+  font-weight: bold;
+  color: #363B44;
+  text-align: center;
+  font-family: "Bangers";
+}
+
+.formula-result {
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #E0AC00 0%, #f4d03f 100%);
+  border: 2px solid #363B44;
+  border-radius: 5px;
+  font-weight: bold;
+  color: #363B44;
+  text-align: center;
+}
+
+.formula-label {
+  font-style: italic;
+  color: #666;
+  font-size: 12px;
+  text-align: center;
+  margin-top: 5px;
+}
+
+.reset-btn {
+  background: linear-gradient(135deg, #DA3A2F 0%, #c82333 100%);
+  color: white;
+  border: 2px solid #363B44;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: "Bangers";
+  font-size: 1.1rem;
+  text-shadow: 1px 1px 0px #000;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  margin: 15px auto;
+  display: block;
+}
+
+.reset-btn:hover {
+  background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+/* Responsive design */
+@media (max-width: 800px) {
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  
+  .formula {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  
+  .operator,
+  .equals {
+    font-size: 16px;
+  }
+}
+</style>

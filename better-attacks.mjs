@@ -1,5 +1,4 @@
 
-
   /**
    * @typedef {object} TargetTemplateData
    *
@@ -293,6 +292,7 @@
   let originalCursor = null;
   let currentHoveredToken = null;
   let menuHideTimeout = null;
+  let menuShowTimeout = null;
   
   /**
    * Sets up the token hover attack menu system
@@ -345,7 +345,11 @@
         return;
       }
       
-      // Left expanded area - hide menu
+      // Left expanded area - hide menu and clear show timeout
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
       document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
       currentHoveredToken = null;
       return;
@@ -358,11 +362,31 @@
             pos.y >= bounds.y && pos.y <= bounds.y + bounds.height;
     });
     
-    // Show menu for newly hovered token
+    // Show menu for newly hovered token with delay
     if (hoveredToken && hoveredToken !== currentHoveredToken) {
+      // Clear any existing show timeout
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
+      
+      // Remove existing menus immediately
       document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
       currentHoveredToken = hoveredToken;
-      showTokenAttackMenu(hoveredToken);
+      
+      // Show menu after delay (500ms)
+      menuShowTimeout = setTimeout(() => {
+        showTokenAttackMenu(hoveredToken);
+        menuShowTimeout = null;
+      }, 500);
+    } else if (!hoveredToken && currentHoveredToken) {
+      // No token hovered and we had one before - clear timeout and hide menu
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
+      document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
+      currentHoveredToken = null;
     }
   }
 
@@ -728,6 +752,17 @@
       
       // Skip if this is the same as primary effect (affliction)
       if (linkedEffect.name === primaryEffect.name) continue;
+
+      //test for any of the psueodnames for damage eg strength
+      if(linkedEffect.name.includes("Strength Effect")  || linkedEffect.name.includes("Strength Based")
+      || linkedEffect.name.includes("Strength Damage") || linkedEffect.name.includes("Weaken Based")){
+        linkedEffect.name = "Damage";
+      }
+        
+      if(!linkedEffect.name.includes("Damage") && !linkedEffect.name.includes("Weaken")){
+        effects.splice(i, 1);
+        continue; 
+      }
       
       const note = originalPower.system.notes;
       const linkedEffectNote = getEffectNotesForEffectName(note, linkedEffect.name);
@@ -751,21 +786,24 @@
       // Use existing saveLinkedAttack logic
       saveLinkedAttack(actor, linkedVirtualPower);
     }
+    if(effects.length > 1)
+    {
+      if(attack.isDmg==false){
+        const updateData = {
+          isDmg: true,
+          'repeat.dmg': [
+            {value: 0, status: []},
+            {value: 0, status: []},
+            {value: 0, status: []},
+            {value: 0, status: []}
+          ],
+          'save.dmg': {}
+        };
     
-    if(attack.isDmg==false){
-      const updateData = {
-        isDmg: true,
-        'repeat.dmg': [
-          {value: 0, status: []},
-          {value: 0, status: []},
-          {value: 0, status: []},
-          {value: 0, status: []}
-        ],
-        'save.dmg': {}
-      };
-    let lastAttackKey = findAttackLastAttackKey(actor.system.attaque)
-      actor.system.attaque[lastAttackKey] = {...actor.system.attaque[lastAttackKey], ...updateData};
-      await actor.update({[`system.attaque.${lastAttackKey}`]: actor.system.attaque[lastAttackKey]});
+      let lastAttackKey = findAttackLastAttackKey(actor.system.attaque)
+        actor.system.attaque[lastAttackKey] = {...actor.system.attaque[lastAttackKey], ...updateData};
+        await actor.update({[`system.attaque.${lastAttackKey}`]: actor.system.attaque[lastAttackKey]});
+      }
     }
     
   }
@@ -1048,24 +1086,25 @@
       const inRange = isInRange(distance, range);
       
       if (!inRange) {
-        ui.notifications.warn(`Target location is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
-      }
+          ui.notifications.warn(`Target location is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
+        }
         // Store values before clearing targeting mode
-      const attackToken = targetingToken;
-      const attackData = targetingAttack;
-      
-      exitTargetingMode();
-      
-      // Ensure attacker token is controlled before attack
-      attackToken.control({ releaseOthers: true });
-      
-      // For area attacks, place template directly at click location
-      await placeTemplateDirectly(attackToken, attackData, worldPos);
-      
-      // Execute the attack after template placement
+        const attackToken = targetingToken;
+        const attackData = targetingAttack;
+        
+        exitTargetingMode();
+        
+        // Ensure attacker token is controlled before attack
+        attackToken.control({ releaseOthers: true });
+        
+        // For area attacks, place template directly at click location
+        await placeTemplateDirectly(attackToken, attackData, worldPos);
+        
+        // Execute the attack after template placement
         await executeAttack(attackToken, attackData);
       
-    } else if (clickedToken && clickedToken !== targetingToken) {
+    } 
+    else if (clickedToken && clickedToken !== targetingToken) {
       // Handle single-target attacks on other tokens
       const squares = canvas.grid.getDirectPath([targetingToken.center, clickedToken.center]).length - 1;
       const distance = squares * canvas.grid.distance;
@@ -1084,11 +1123,10 @@
         } else {
           ui.notifications.info(`${clickedToken.name} is already targeted.`);
         }
-      } else  {
-        if(!inRange) {
+      } else {
+        if (!inRange) {
           ui.notifications.warn(`${clickedToken.name} is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
-        }
-      
+        } 
         // Regular click: Add target and attack (preserve existing Alt+clicked targets)
         const currentTargets = Array.from(game.user.targets);
         const targetIds = currentTargets.map(t => t.id);
@@ -2180,31 +2218,40 @@
 
   function getSaveFromResistance(matchingPower, resistance)
   {
-    //first check notes for "Resisted by: <resistance>"
+    const originalResistance = resistance;
     const notes = matchingPower.system.notes;
+    let foundInNotes = false;
+    
+    //first check notes for "Resisted by: <resistance>"
     const regex = /Resisted by: ([^,]+)/;
     let match = notes.match(regex);
     if(match){
       resistance = match[1];
+      foundInNotes = true;
     }
-    //also check notes for "Alternate Resistance: <resistance>"
+    
+    //also check notes for "Alternate Resistance: <resistance>" - this takes priority over extras
     const regex2 = /Alternate Resistance: ([^,]+)/;
     match = notes.match(regex2);
     if(match){
       resistance = match[1];
+      foundInNotes = true;
     }
-    //then check extras for "Alternate Resistance: <resistance> as this trumps Resisted by:" 
-    for (const key in matchingPower.system.extras) {
-            const item =  matchingPower.system.extras[key];
-      const regex = /Alternate Resistance: ([^,]+)/;
-            if (item.name && item.name.includes("Alternate Resistance"))  {
-                match = item.name.match(regex);
-          if(match){
-            resistance = match[1]
+    
+    //only check extras for "Alternate Resistance: <resistance>" if nothing was found in notes
+    if (!foundInNotes) {
+      for (const key in matchingPower.system.extras) {
+              const item =  matchingPower.system.extras[key];
+        const regex = /Alternate Resistance: ([^,]+)/;
+              if (item.name && item.name.includes("Alternate Resistance"))  {
+                  match = item.name.match(regex);
+            if(match){
+              resistance = match[1]
+            }
           }
+          
         }
-        
-      }
+    }
     // Convert resistance to lowercase for comparison
     const resistanceLower = resistance.toLowerCase();
     
@@ -2222,7 +2269,7 @@
       'agility': 'agilite',
       'dexterity': 'dexterite',
       'fighting': 'combativite',
-      'intellect': 'intelligence',
+       'intelligence' : 'intelligence',
       'awareness': 'sensibilite',
       'presence': 'presence'
     };
@@ -2231,6 +2278,72 @@
   }
 
 
+  /**
+   * Check for Inaccurate flaw in power and return the total attack penalty
+   * @param {Object} matchingPower - The power to check for Inaccurate
+   * @returns {number} - The total attack penalty (positive number, e.g., 12 for -12)
+   */
+  function getInaccuratePenalty(matchingPower) {
+    const notes = matchingPower.system.notes;
+    let totalPenalty = 0;
+    let foundInNotes = false;
+    
+    // First check notes for "Inaccurate X: -Y" pattern
+    const inaccurateRegex = /Inaccurate\s+(\d+):\s*-(\d+)/gi;
+    let match;
+    while ((match = inaccurateRegex.exec(notes)) !== null) {
+      const level = parseInt(match[1], 10);
+      const penalty = parseInt(match[2], 10);
+      // Verify it's -2 per level, use the penalty value directly if it matches expected calculation
+      if (penalty === level * 2) {
+        totalPenalty += penalty;
+        foundInNotes = true;
+      }
+    }
+    
+    // Also check for "Inaccurate X" pattern without explicit penalty (calculate -2 per level)
+    if (!foundInNotes) {
+      const inaccurateRegex2 = /Inaccurate\s+(\d+)/gi;
+      while ((match = inaccurateRegex2.exec(notes)) !== null) {
+        const level = parseInt(match[1], 10);
+        totalPenalty += level * 2; // -2 per level
+        foundInNotes = true;
+      }
+    }
+    
+    // Only check extras/flaws for "Inaccurate" if nothing was found in notes
+    if (!foundInNotes) {
+      // Check extras (this might be flaws, but checking extras for consistency with existing pattern)
+      for (const key in matchingPower.system.extras) {
+        const item = matchingPower.system.extras[key];
+        if (item.name && item.name.includes("Inaccurate")) {
+          const regex = /Inaccurate\s+(\d+)/i;
+          const match = item.name.match(regex);
+          if (match) {
+            const level = parseInt(match[1], 10);
+            totalPenalty += level * 2; // -2 per level
+          }
+        }
+      }
+      
+      // Also check flaws if they exist as a separate property
+      if (matchingPower.system.flaws) {
+        for (const key in matchingPower.system.flaws) {
+          const item = matchingPower.system.flaws[key];
+          if (item.name && item.name.includes("Inaccurate")) {
+            const regex = /Inaccurate\s+(\d+)/i;
+            const match = item.name.match(regex);
+            if (match) {
+              const level = parseInt(match[1], 10);
+              totalPenalty += level * 2; // -2 per level
+            }
+          }
+        }
+      }
+    }
+    
+    return totalPenalty;
+  }
 
   async function createAttackDetailsFromPower( matchingPower, actor)    { 
     
@@ -2703,8 +2816,7 @@
         'awareness': 'sensibilite',
         'presence': 'presence',
         'intelligence': 'intelligence',
-        'intellect': 'intelligence',
-        'parry': 'parade',
+
         'dodge': 'esquive',
         'fortitude': 'vigueur',
         'toughness': 'robustesse',
@@ -2994,13 +3106,19 @@
           }
       },
       settings:{
-          noatk: type=="area",
+          noatk: type=="area" || type=="combatperception",
           nocrit: false
       },
       skill:skillId,
       text: getPowerDescription(matchingPower),
       type: type,
   };
+
+  // Check for Inaccurate flaw and apply attack penalty
+  const inaccuratePenalty = getInaccuratePenalty(matchingPower);
+  if (inaccuratePenalty > 0) {
+    newAttackData.mod.atk = -inaccuratePenalty;
+  }
 
   // If the attack exists, update it; otherwise, add a new one
 
@@ -3013,7 +3131,7 @@
   let updates = {};
   if (key) {
     updates[`system.attaque.${key}`] = newAttackData;
-    await actor.update(updates);
+    await actor.update(updates);10
   } else { 
     const attacks = actor.system.attaque;
     let newAttack ={}

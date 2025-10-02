@@ -10,7 +10,7 @@
   ],
   "url": "https://github.com/thomasjeffreyandersontwin/mm3e-better-attacks",
   "scripts": [
-    "scripts/better-attacks.js"
+    "scripts/better-attacks.mjs"
   ],
   "compatibility": {
     "minimum": "10",
@@ -20,10 +20,8 @@
     "systems": [
       {
         "id": "mutants-and-masterminds-3e",
-        "type": "system",
-        "compatibility": {
-          "minimum": "1.35.3"
-        }
+        "type": "system"
+       
       }
     ]
   },
@@ -41,16 +39,18 @@
       },
       "system": "mutants-and-masterminds-3e"
     },
-    {
-      "name": "better-attacks-macros",
-      "label": "Better Attacks Macros",
-      "path": "packs/better-attacks-macros",
-      "type": "Macro",
-      "ownership": {
-        "PLAYER": "OBSERVER",
-        "ASSISTANT": "OWNER"
-      },
-      "system": "mutants-and-masterminds-3e"
+      {
+        "name": "better-attacks-macros",
+        "label": "Better Attacks Macros",
+        "path": "packs/better-attacks-macros",
+        "type": "Macro",
+        "ownership": {
+          "PLAYER": "OWNER",
+          "GM": "OWNER",
+          "ASSISTANT": "OWNER"
+        },
+        "system": "mutants-and-masterminds-3e"
+
     }
   ]
 }

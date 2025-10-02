@@ -1,4 +1,5 @@
 
+// MeasurementCalculator will be loaded separately by Foundry VTT
 
   /**
    * @typedef {object} TargetTemplateData
@@ -200,7 +201,37 @@
     { name: "Enhanced Strength", range: "Close", resistance: "Toughness", attackType: "damage"}
   ];
 
-
+  // Global powers configuration for Active Effects creation
+  const ACTIVE_EFFECTS_POWERS_CONFIG = [
+    { name: "Enhanced Trait", effectType: "enhanced_trait" },
+    { name: "Enhanced Ability", effectType: "enhanced_ability" },
+    { name: "Protection", effectType: "protection" },
+    { name: "Enhanced Strength", effectType: "enhanced_trait" },
+    { name: "Enhanced Agility", effectType: "enhanced_trait" },
+    { name: "Enhanced Fighting", effectType: "enhanced_trait" },
+    { name: "Enhanced Awareness", effectType: "enhanced_trait" },
+    { name: "Enhanced Stamina", effectType: "enhanced_trait" },
+    { name: "Enhanced Intellect", effectType: "enhanced_trait" },
+    { name: "Enhanced Presence", effectType: "enhanced_trait" },
+    { name: "Enhanced Toughness", effectType: "enhanced_trait" },
+    { name: "Enhanced Dodge", effectType: "enhanced_trait" },
+    { name: "Enhanced Parry", effectType: "enhanced_trait" },
+    { name: "Enhanced Fortitude", effectType: "enhanced_trait" },
+    { name: "Enhanced Will", effectType: "enhanced_trait" },
+    // Defenses
+    { name: "Enhanced Acrobatics", effectType: "enhanced_trait" },
+    { name: "Enhanced Athletics", effectType: "enhanced_trait" },
+    { name: "Enhanced Deception", effectType: "enhanced_trait" },
+    { name: "Enhanced Insight", effectType: "enhanced_trait" },
+    { name: "Enhanced Intimidation", effectType: "enhanced_trait" },
+    { name: "Enhanced Investigation", effectType: "enhanced_trait" },
+    { name: "Enhanced Perception", effectType: "enhanced_trait" },
+    { name: "Enhanced Persuasion", effectType: "enhanced_trait" },
+    { name: "Enhanced Stealth", effectType: "enhanced_trait" },
+    { name: "Enhanced Technology", effectType: "enhanced_trait" },
+    { name: "Enhanced Treatment", effectType: "enhanced_trait" },
+    { name: "Enhanced Vehicles", effectType: "enhanced_trait" }
+  ];
 
   Hooks.on('ready', () => {
     
@@ -241,6 +272,18 @@
         event.preventDefault();
         ImportSpeedFromPowers(app.actor, app);  
       });
+
+      // Add Create Active Effects button to the Powers section
+      const powersSection = html.find(".tab.pouvoirs");
+      if (powersSection.length > 0) {
+        const createEffectsButton = $(`<a class="add" data-type="create-effects-action">Create Active Effects</a>`);
+        powersSection.append(createEffectsButton);
+        
+        createEffectsButton.on("click", (event) => {
+          event.preventDefault();
+          CreateActiveEffectsFromPowers(app.actor, app);
+        });
+      }
 
     // range field to each attack  
     html.find(".reorderDrop[data-type='attaque']").each((_, el) => {
@@ -293,6 +336,7 @@
   let originalCursor = null;
   let currentHoveredToken = null;
   let menuHideTimeout = null;
+  let menuShowTimeout = null;
   
   /**
    * Sets up the token hover attack menu system
@@ -321,8 +365,10 @@
     const mouseX = event.data.originalEvent.clientX;
     const mouseY = event.data.originalEvent.clientY;
     
-    // Check if mouse is over any attack menu
+    // Check if mouse is over any attack menu or resource display
     const overMenu = document.elementFromPoint(mouseX, mouseY)?.closest('.token-attack-menu');
+    const overResourceDisplay = document.elementFromPoint(mouseX, mouseY)?.closest('.token-resource-display');
+    const overResourceDisplayOnly = document.elementFromPoint(mouseX, mouseY)?.closest('.token-resource-display-only');
     
     // If menu is visible, use expanded hover area
     if (currentHoveredToken && document.getElementById(`token-attack-menu-${currentHoveredToken.id}`)) {
@@ -340,13 +386,19 @@
                             pos.y >= expandedBounds.y && 
                             pos.y <= expandedBounds.y + expandedBounds.height;
       
-      // Stay in expanded area or over menu - keep menu visible
-      if (inExpandedArea || overMenu) {
+      // Stay in expanded area or over menu/resource display - keep menu visible
+      if (inExpandedArea || overMenu || overResourceDisplay || overResourceDisplayOnly) {
         return;
       }
       
-      // Left expanded area - hide menu
+      // Left expanded area - hide menu and clear show timeout
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
       document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
+      document.querySelectorAll('.token-resource-display').forEach(display => display.remove());
+      document.querySelectorAll('.token-resource-display-only').forEach(display => display.remove());
       currentHoveredToken = null;
       return;
     }
@@ -358,11 +410,38 @@
             pos.y >= bounds.y && pos.y <= bounds.y + bounds.height;
     });
     
-    // Show menu for newly hovered token
+    // Show menu for newly hovered token with delay
     if (hoveredToken && hoveredToken !== currentHoveredToken) {
+      // Clear any existing show timeout
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
+      
+      // Remove existing menus immediately
       document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
+      document.querySelectorAll('.token-resource-display').forEach(display => display.remove());
+      document.querySelectorAll('.token-resource-display-only').forEach(display => display.remove());
       currentHoveredToken = hoveredToken;
-      showTokenAttackMenu(hoveredToken);
+      
+      // Show menu after delay (500ms)
+      menuShowTimeout = setTimeout(() => {
+        showTokenAttackMenu(hoveredToken);
+        //we need to pass total menu height to the function, eg all menue itesm stacke 
+        const menuHeight = document.getElementById(`token-attack-menu-${hoveredToken.id}`).offsetHeight;
+
+        showTokenTopPanelOnly(hoveredToken, menuHeight);
+        menuShowTimeout = null;
+      }, 500);
+    } else if (!hoveredToken && currentHoveredToken) {
+      // No token hovered and we had one before - clear timeout and hide menu
+      if (menuShowTimeout) {
+        clearTimeout(menuShowTimeout);
+        menuShowTimeout = null;
+      }
+      document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
+      document.querySelectorAll('.token-resource-display').forEach(display => display.remove());
+      currentHoveredToken = null;
     }
   }
 
@@ -393,18 +472,105 @@
     const tokenRect = token.mesh.getBounds();
     const canvasRect = canvas.app.view.getBoundingClientRect();
     
-    // Calculate width based on longest attack name
-    const longestAttackName = attacks.reduce((longest, attack) => 
-      attack.label.length > longest.length ? attack.label : longest, '').length;
-    const menuWidth = Math.max(tokenRect.width, longestAttackName * 8 + 20); // 8px per char + padding
+    // Fixed width for consistent appearance
+    const menuWidth = 250; // Fixed width for all menus
     
     // Position menu down and to the left like a comic caption
-    const menuLeft = canvasRect.left + tokenRect.x - 20; // 20px to the left
+    const menuLeft = canvasRect.left + tokenRect.x - 19; // 19px to the left (1px more to the right)
+    
+    // Add heart, star, fatigue, and luck icons with numbers above the menu
+    const heroPoints = actor.system.heroisme || 0;
+    const injuries = actor.system.blessure || 0;
+    const fatiguePoints = actor.getFlag('mm3e-better-attacks', 'fatiguePoints') || 0;
+    // Check if actor has Luck advantage
+    const luckTalent = actor.items.find(item => 
+      item.type === 'talent' && 
+      item.name.toLowerCase().includes('luck')
+    );
+    const hasLuck = luckTalent !== undefined;
+    const luckPoints = hasLuck ? (actor.getFlag('mm3e-better-attacks', 'luck') || luckTalent.system.rang || 0) : 0;
+    
+    // Create resource display above the menu
+    const resourceDisplay = document.createElement('div');
+    resourceDisplay.id = `token-resource-display-${token.id}`;
+    resourceDisplay.className = 'token-resource-display';
+    resourceDisplay.style.cssText = `
+      position: fixed;
+      left: ${menuLeft + 4}px;
+      top: ${canvasRect.top + tokenRect.y + tokenRect.height + 35}px;
+      width: ${menuWidth - 8}px;
+      z-index: 100;
+      display: flex;
+      justify-content: space-evenly;
+      gap: 1px;
+      padding: 9px 4px;
+      background: url("modules/mm3e-better-attacks/images/fond.webp") #B3D9FF;
+      background-size: 300px 600px;
+      background-blend-mode: hard-light;
+      border: 2px solid #000000;
+      border-radius: 0px;
+      font-family: 'Crime Fighter', cursive;
+      font-style: italic;
+      color: #000000;
+      box-shadow: none;
+      text-shadow: 1px 1px 0px #FFFFFF;
+      pointer-events: auto;
+    `;
+    
+    resourceDisplay.innerHTML = `
+      <div class="resource-item" title="${game.i18n.localize('MM3.Heroisme') || 'Hero Points'}">
+        <i class="fas fa-star resource-icon star"></i>
+        <div class="resource-control hero">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'hero', -1)">&lt;</button>
+          <input type="number" value="${heroPoints}" min="0" max="9" 
+                 class="resource-input"
+                 onchange="updateHeroPoints('${token.id}', this.value)">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'hero', 1)">&gt;</button>
+        </div>
+      </div>
+      
+      <div class="resource-item" title="${game.i18n.localize('MM3.Blessures') || 'Injuries'}">
+        <i class="fas fa-heart resource-icon heart"></i>
+        <div class="resource-control injury">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'injury', -1)">&lt;</button>
+          <input type="number" value="${injuries}" min="0" max="9" 
+                 class="resource-input"
+                 onchange="updateInjuries('${token.id}', this.value)">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'injury', 1)">&gt;</button>
+        </div>
+      </div>
+      
+      <div class="resource-item" title="Fatigue Points">
+        <i class="fas fa-battery-three-quarters resource-icon battery"></i>
+        <div class="resource-control fatigue">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'fatigue', -1)">&lt;</button>
+          <input type="number" value="${fatiguePoints}" min="0" max="9" 
+                 class="resource-input"
+                 onchange="updateFatiguePoints('${token.id}', this.value)">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'fatigue', 1)">&gt;</button>
+        </div>
+      </div>
+      
+      ${hasLuck ? `
+      <div class="resource-item" title="Luck">
+        <i class="fas fa-clover resource-icon clover"></i>
+        <div class="resource-control luck">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'luck', -1)">&lt;</button>
+          <input type="number" value="${luckPoints}" min="0" max="9" 
+                 class="resource-input"
+                 onchange="updateLuckPoints('${token.id}', this.value)">
+          <button class="resource-btn" onclick="adjustResource('${token.id}', 'luck', 1)">&gt;</button>
+        </div>
+      </div>
+      ` : ''}
+    `;
+    
+    document.body.appendChild(resourceDisplay);
     
     menu.style.cssText = `
       position: fixed;
       left: ${menuLeft}px;
-      top: ${canvasRect.top + tokenRect.y + tokenRect.height + 10}px;
+      top: ${canvasRect.top + tokenRect.y + tokenRect.height + 75}px;
       width: ${menuWidth}px;
       z-index: 1000;
       pointer-events: auto;
@@ -424,12 +590,12 @@
       button.style.cssText = `
         width: 100%;
         height: 32px;
-        background: #FFFF99;
+        background: #FFEB3B;
         border: 2px solid #000000;
         border-radius: 0px;
         font-family: 'Bangers', cursive;
         font-size: 16px;
-        font-weight: bold;
+        font-weight: normal;
         cursor: pointer;
         color: #000000;
         text-transform: uppercase;
@@ -442,9 +608,9 @@
         text-shadow: none;
         transition: all 0.1s ease;
         margin-bottom: 4px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        box-sizing: border-box;
+        text-align: center;
+        line-height: 20px;
       `;
       
       // Add hover effect
@@ -457,7 +623,7 @@
       });
       
       button.addEventListener('mouseleave', () => {
-        button.style.background = '#FFFF99'; // Back to yellow
+        button.style.background = '#FFEB3B'; // Back to original yellow
         button.style.color = '#000000';
         button.style.borderColor = '#000000';
         button.style.boxShadow = '3px 3px 0px #000000';
@@ -479,6 +645,49 @@
   }
 
   /**
+   * Shows the top panel only for a token (duplicate function)
+   * @param {Token} token - The token to show the top panel for
+   */
+  function showTokenTopPanelOnly(token, menuHeight) {
+    const actor = token.actor;
+    if (!actor) return;
+    
+    // Calculate menu dimensions
+    const tokenRect = token.mesh.getBounds();
+    const canvasRect = canvas.app.view.getBoundingClientRect();
+    const menuWidth = 288; // Narrower background panel (1px less on each side)
+    const menuLeft = canvasRect.left + tokenRect.x - 35; // Adjusted to keep centered
+    
+    // Calculate bottom border offset - negative to pull bottom up
+    const bottomOffset = -30;
+    
+    // Create resource display above the menu
+    const resourceDisplay = document.createElement('div');
+    resourceDisplay.id = `token-resource-display-only-${token.id}`;
+    resourceDisplay.className = 'token-resource-display-only';
+    resourceDisplay.style.cssText = `
+      position: fixed;
+      left: ${menuLeft}px;
+      top: ${canvasRect.top + tokenRect.y + tokenRect.height + 2}px;
+      width: ${menuWidth}px;
+      height: ${menuHeight * 1.0 + 115}px;
+      z-index: 90;
+      display: flex;
+      flex-direction: column;
+      pointer-events: auto;
+      overflow: visible;
+    `;
+    
+    resourceDisplay.innerHTML = `
+      <div style="width: 100%; height: 40px; background: url('modules/mm3e-better-attacks/images/comic page top.png') no-repeat top center; background-size: 100% 100%; margin: 0; padding: 0; filter: brightness(1.4);"></div>
+      <div style="flex: 1; width: 100%; background: url('modules/mm3e-better-attacks/images/comic page middle.png') repeat-y; background-size: 100% auto; background-position: center; margin: 0; padding: 0; filter: brightness(1.4);"></div>
+      <div style="width: 100%; height: 40px; background: url('modules/mm3e-better-attacks/images/comic page bottom.png') no-repeat bottom center; background-size: 100% 100%; margin: 0; padding: 0; transform: translateY(${bottomOffset}px); filter: brightness(1.4);"></div>
+    `;
+    
+    document.body.appendChild(resourceDisplay);
+  }
+
+  /**
    * Hides the attack menu for a token
    * @param {Token} token - The token to hide the menu for
    */
@@ -487,7 +696,114 @@
     if (menu) {
       menu.remove();
     }
+    
+    // Also remove the resource display for this specific token
+    const resourceDisplay = document.getElementById(`token-resource-display-${token.id}`);
+    if (resourceDisplay) {
+      resourceDisplay.remove();
+    }
+    
+    // Also remove the background panel
+    const backgroundPanel = document.getElementById(`token-resource-display-only-${token.id}`);
+    if (backgroundPanel) {
+      backgroundPanel.remove();
+    }
   }
+
+  // Global functions for updating hero points and injuries
+  window.updateHeroPoints = async function(tokenId, value) {
+    const token = canvas.tokens.get(tokenId);
+    if (token && token.actor) {
+      await token.actor.update({ 'system.heroisme': parseInt(value) });
+    }
+  };
+
+  window.updateInjuries = async function(tokenId, value) {
+    const token = canvas.tokens.get(tokenId);
+    if (token && token.actor) {
+      await token.actor.update({ 'system.blessure': parseInt(value) });
+    }
+  };
+
+  window.updateFatiguePoints = async function(tokenId, value) {
+    const token = canvas.tokens.get(tokenId);
+    if (token && token.actor) {
+      await token.actor.setFlag('mm3e-better-attacks', 'fatiguePoints', parseInt(value));
+    }
+  };
+
+  window.updateLuckPoints = async function(tokenId, value) {
+    const token = canvas.tokens.get(tokenId);
+    if (token && token.actor) {
+      await token.actor.setFlag('mm3e-better-attacks', 'luck', parseInt(value));
+    }
+  };
+
+  window.adjustResource = async function(tokenId, resourceType, delta) {
+    const token = canvas.tokens.get(tokenId);
+    if (!token || !token.actor) return;
+    
+    const actor = token.actor;
+    let currentValue = 0;
+    
+    switch(resourceType) {
+      case 'hero':
+        currentValue = actor.system.heroisme || 0;
+        await actor.update({ 'system.heroisme': Math.max(0, Math.min(9, currentValue + delta)) });
+        break;
+      case 'injury':
+        currentValue = actor.system.blessure || 0;
+        await actor.update({ 'system.blessure': Math.max(0, Math.min(9, currentValue + delta)) });
+        break;
+      case 'fatigue':
+        currentValue = actor.getFlag('mm3e-better-attacks', 'fatiguePoints') || 0;
+        await actor.setFlag('mm3e-better-attacks', 'fatiguePoints', Math.max(0, Math.min(9, currentValue + delta)));
+        break;
+      case 'luck':
+        currentValue = actor.getFlag('mm3e-better-attacks', 'luck') || 0;
+        await actor.setFlag('mm3e-better-attacks', 'luck', Math.max(0, Math.min(9, currentValue + delta)));
+        break;
+    }
+    
+    // Remove existing elements without animation
+    const menu = document.getElementById(`token-attack-menu-${token.id}`);
+    const resourceDisplay = document.getElementById(`token-resource-display-${token.id}`);
+    const backgroundPanel = document.getElementById(`token-resource-display-only-${token.id}`);
+    
+    if (menu) menu.style.animation = 'none';
+    if (resourceDisplay) resourceDisplay.style.animation = 'none';
+    if (backgroundPanel) backgroundPanel.style.animation = 'none';
+    
+    hideTokenAttackMenu(token);
+    showTokenAttackMenu(token);
+    
+    // Recreate background panel with menuHeight
+    const menuHeight = document.getElementById(`token-attack-menu-${token.id}`)?.offsetHeight || 0;
+    showTokenTopPanelOnly(token, menuHeight);
+    
+    // Re-get elements and disable animation, set opacity to visible
+    requestAnimationFrame(() => {
+      const newMenu = document.getElementById(`token-attack-menu-${token.id}`);
+      const newResourceDisplay = document.getElementById(`token-resource-display-${token.id}`);
+      const newBackgroundPanel = document.getElementById(`token-resource-display-only-${token.id}`);
+      
+      if (newMenu) {
+        newMenu.style.animation = 'none';
+        newMenu.style.opacity = '1';
+        newMenu.style.transform = 'scale(1) rotate(0deg)';
+      }
+      if (newResourceDisplay) {
+        newResourceDisplay.style.animation = 'none';
+        newResourceDisplay.style.opacity = '1';
+        newResourceDisplay.style.transform = 'scale(1) rotate(0deg)';
+      }
+      if (newBackgroundPanel) {
+        newBackgroundPanel.style.animation = 'none';
+        newBackgroundPanel.style.opacity = '1';
+        newBackgroundPanel.style.transform = 'scale(1) rotate(0deg)';
+      }
+    });
+  };
 
   /**
    * Adds CSS styles for enhanced targeting functionality
@@ -535,6 +851,128 @@
         cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><g stroke="%23ff0000" stroke-width="4" fill="none"><line x1="24" y1="4" x2="24" y2="16"/><line x1="24" y1="32" x2="24" y2="44"/><line x1="4" y1="24" x2="16" y2="24"/><line x1="32" y1="24" x2="44" y2="24"/><circle cx="24" cy="24" r="6"/></g></svg>') 24 24, crosshair !important;
       }
       
+      @font-face {
+        font-family: 'Crime Fighter';
+        src: url('modules/mm3e-better-attacks/fonts/crimefighterbb_tt.ttf') format('truetype');
+        font-weight: normal;
+        font-style: normal;
+      }
+      
+      /* Menu animations */
+      @keyframes comicPop {
+        0% {
+          opacity: 0;
+          transform: scale(0.3) rotate(-5deg);
+          transform-origin: top center;
+        }
+        50% {
+          transform: scale(1.1) rotate(2deg);
+        }
+        70% {
+          transform: scale(0.95) rotate(-1deg);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) rotate(0deg);
+        }
+      }
+      
+      .token-resource-display-only {
+        animation: comicPop 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+      }
+      
+      .token-resource-display {
+        animation: comicPop 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.05s forwards;
+        opacity: 0;
+      }
+      
+      .token-attack-menu {
+        animation: comicPop 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.1s forwards;
+        opacity: 0;
+      }
+      
+      /* Resource panel styles */
+      .resource-item {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+      }
+      
+      .resource-icon {
+        font-size: 1rem;
+        text-shadow: 1px 1px 0px #000000;
+      }
+      
+      .resource-icon.star { color: #FFFF00; }
+      .resource-icon.heart { color: #FF0000; }
+      .resource-icon.battery { color: #FFA500; }
+      .resource-icon.clover { color: #00FF00; }
+      
+      .resource-control {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 2px 3px;
+        border-radius: 2px;
+        height: 16px;
+      }
+      
+      .resource-control.hero { background: #FFFF00; }
+      .resource-control.injury { background: #FF0000; }
+      .resource-control.fatigue { background: #FFA500; }
+      .resource-control.luck { background: #00FF00; }
+      
+      .resource-input {
+        width: 6px !important;
+        min-width: 6px !important;
+        max-width: 6px !important;
+        height: 16px !important;
+        border: none !important;
+        background: transparent !important;
+        color: #000000;
+        text-align: center;
+        font-weight: bold;
+        font-size: 0.5rem;
+        padding: 0px !important;
+        margin: 0px !important;
+        border-radius: 0px;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif !important;
+        box-sizing: border-box !important;
+        line-height: 16px !important;
+      }
+      
+      .resource-input::-webkit-inner-spin-button,
+      .resource-input::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      
+      .resource-btn {
+        width: 10px;
+        height: 16px;
+        border: none;
+        cursor: pointer;
+        font-size: 0.7rem;
+        font-weight: bold;
+        background: transparent;
+        color: #000000;
+        padding: 0;
+        margin: 0;
+        line-height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .resource-btn i {
+        margin-top: -1px;
+      }
+      
+      .resource-btn:last-child {
+        margin-left: 2px;
+      }
+      
       
       /* Style default Foundry notifications with comic book look */
       #notifications .notification {
@@ -560,7 +998,7 @@
         background: #FFB6C1 !important;
       }
       
-      #notifications .notification.info {
+      #notifications .notification.info {matchingPower.name
         background: #FFFF99 !important;
       }
     `;
@@ -628,7 +1066,72 @@
       }
     }
     
-    return effects;
+    // If no H3 tags found, look for effect patterns in paragraph content
+    if (effects.length === 0) {
+      // Look for patterns like "Damage: Strength-based Damage 13" or "Weaken: Weaken 18"
+      const paragraphMatches = notes.matchAll(/<p>([\s\S]*?)<\/p>/g);
+      
+      for (const pMatch of paragraphMatches) {
+        const pContent = pMatch[1].trim();
+        
+        // Pattern: "Effect Type: Effect Name Number" (e.g., "Damage: Strength-based Damage 13")
+        const effectPattern = /(?:<br>)?([A-Za-z\s]+):\s*([A-Za-z\s\-]+)\s+(\d+)(?:\s*\([^)]*\))?/ ;
+        const effectMatch = pContent.match(effectPattern);
+        
+        if (effectMatch) {
+          const effectType = effectMatch[1].trim();
+          const effectName = effectMatch[2].trim();
+          const rank = effectMatch[3];
+          
+          // Check if this effect type is in ACTIVE_EFFECTS_POWERS_CONFIG
+          const powerConfig = ACTIVE_EFFECTS_POWERS_CONFIG.find(config => 
+            effectType.toLowerCase().includes(config.name.toLowerCase()) ||
+            config.name.toLowerCase().includes(effectType.toLowerCase())
+          );
+          
+          if (powerConfig) {
+            effects.push({
+              name: powerConfig.name,
+              fullName: `${effectType}: ${effectName} ${rank}`,
+              data: `${powerConfig.name} ${rank}`
+            });
+          }
+        } else {
+          // Pattern for no-colon format: "Effect Type Number" (e.g., "Enhanced Trait 15")
+          const noColonPattern = /^([A-Za-z\s]+)\s+(\d+)(?:\s*\([^)]*\))?$/;
+          const noColonMatch = pContent.match(noColonPattern);
+          
+          if (noColonMatch) {
+            const effectType = noColonMatch[1].trim();
+            const rank = noColonMatch[2];
+            
+            // Check if this effect type is in ACTIVE_EFFECTS_POWERS_CONFIG
+            const powerConfig = ACTIVE_EFFECTS_POWERS_CONFIG.find(config => 
+              effectType.toLowerCase().includes(config.name.toLowerCase()) ||
+              config.name.toLowerCase().includes(effectType.toLowerCase())
+            );
+            
+            if (powerConfig) {
+              effects.push({
+                name: powerConfig.name,
+                fullName: `${effectType} ${rank}`,
+                data: `${powerConfig.name} ${rank}`
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Filter to only return effects that are compatible with Active Effects from ACTIVE_EFFECTS_POWERS_CONFIG
+    const activeEffects = effects.filter(effect => {
+      return ACTIVE_EFFECTS_POWERS_CONFIG.some(power => 
+        effect.name.toLowerCase().includes(power.name.toLowerCase()) ||
+        power.name.toLowerCase().includes(effect.name.toLowerCase())
+      );
+    });
+    
+    return activeEffects;
   }
 
   /**
@@ -703,7 +1206,7 @@
     
     let save = getSaveFromResistance(virtualPower, powerConfig.resistance);
     let type = getTypeFromPower(virtualPower, powerConfig);
-    virtualPower.notes = originalPower.notes + "_____________"
+    virtualPower.system.notes = originalPower.system.notes + "_____________"
     
     let combatSkill;
     if(type =="combatdistance" || type =="combatcontact"){
@@ -717,80 +1220,93 @@
     }
     let afflictionResults = afflictions ? afflictions.result : null;
       
+    // Calculate critical value based on Dangerous/Improved Critical extras
+    const criticalValue = getCriticalFromPower(virtualPower);
+    const critique = criticalValue > 0 ? 20 - criticalValue : 20;
+    
     // Create the primary attack
-    let attack = await createAttack(virtualPower.name, actor, virtualPower, type, save, 20, powerConfig.attackType, combatSkill, afflictionResults, powerConfig);
+    let attack = await createAttack(virtualPower.name, actor, virtualPower, type, save, critique, powerConfig.attackType, combatSkill, afflictionResults, powerConfig);
     attack.save.affliction.effet = virtualPower.system.cout.rang.toString();
     attack.effet = ""
-    
-    // Link all effects (including weaken, damage, etc.)
-    for (let i = 0; i < effects.length; i++) {
-      const linkedEffect = effects[i];
-      
-      // Skip if this is the same as primary effect (affliction)
-      if (linkedEffect.name === primaryEffect.name) continue;
-      
-      const note = originalPower.system.notes;
-      const linkedEffectNote = getEffectNotesForEffectName(note, linkedEffect.name);
-      
-      // Create virtual power for linked effect
-      const linkedVirtualPower = {
-        ...originalPower,
-        name: linkedEffect.name,
-        system: {
-          ...originalPower.system,
-          effetsprincipaux: linkedEffect.name,
-          effets: linkedEffect.data,
-          notes: linkedEffectNote,
-          cout: {
-            ...originalPower.system.cout,
-            rang: GetRangeForAttack(actor, attack)
-          }
-        }
-      };
 
-      // Use existing saveLinkedAttack logic
-      saveLinkedAttack(actor, linkedVirtualPower);
-    }
+      
     
-    if(attack.isDmg==false){
-      const updateData = {
-        isDmg: true,
-        'repeat.dmg': [
-          {value: 0, status: []},
-          {value: 0, status: []},
-          {value: 0, status: []},
-          {value: 0, status: []}
-        ],
-        'save.dmg': {}
-      };
-    let lastAttackKey = findAttackLastAttackKey(actor.system.attaque)
-      actor.system.attaque[lastAttackKey] = {...actor.system.attaque[lastAttackKey], ...updateData};
-      await actor.update({[`system.attaque.${lastAttackKey}`]: actor.system.attaque[lastAttackKey]});
+    if(effects.length > 1)
+    {
+      if(attack.isDmg==false){
+        const updateData = {
+          isDmg: true,
+          'repeat.dmg': [
+            {value: 0, status: []},
+            {value: 0, status: []},
+            {value: 0, status: []},
+            {value: 0, status: []}
+          ],
+          'save.dmg': {}
+        };
+    
+      let lastAttackKey = findAttackLastAttackKey(actor.system.attaque)
+        actor.system.attaque[lastAttackKey] = {...actor.system.attaque[lastAttackKey], ...updateData};
+        await actor.update({[`system.attaque.${lastAttackKey}`]: actor.system.attaque[lastAttackKey]});
+      }
     }
     
   }
 
   function getEffectNotesForEffectName(notes, effectName){
-    // Look for H3 tags containing the effect name, similar to parseMultipleEffectsFromNotes
-    const h3Regex = new RegExp(`<h3>([^<]*${effectName}[^<]*)</h3>`, 'i');
-    const h3Match = notes.match(h3Regex);
+    // Create a mapping for common effect name variations
+    const effectNameMappings = {
+      'Strength Damage': ['Strength Damage', 'Strength-based Damage', 'Damage'],
+      'Damage': ['Damage', 'Strength Damage', 'Strength-based Damage'],
+      'Weaken': ['Weaken'],
+      'Affliction': ['Affliction']
+    };
     
-    if (h3Match) {
-      const fullEffectName = h3Match[1].trim();
-      // Extract the effect type (e.g., "Affliction" from "Affliction: Affliction 20")
-      const effectType = fullEffectName.split(':')[0].trim();
+    // Get possible names to search for
+    const searchNames = effectNameMappings[effectName] || [effectName];
+    
+    // Look for H3 tags containing the effect name, similar to parseMultipleEffectsFromNotes
+    for (const searchName of searchNames) {
+      const h3Regex = new RegExp(`<h3>([^<]*${searchName}[^<]*)</h3>`, 'i');
+      const h3Match = notes.match(h3Regex);
       
-      // Find the corresponding section in the notes
-      const sections = notes.split(/<h3>/i);
-      for (let i = 1; i < sections.length; i++) {
-        const section = sections[i];
-        const sectionMatch = section.match(/^([^<]+)</);
-        if (sectionMatch && sectionMatch[1].trim().includes(effectName)) {
-          // Split into paragraphs and get the data paragraph (second one)
-          const paragraphs = section.split('</p>').map(p => p.replace(/<[^>]*>/g, '').trim()).filter(p => p.length > 0);
-          if (paragraphs.length >= 2) {
-            return paragraphs[1]; // Return the data paragraph
+      if (h3Match) {
+        const fullEffectName = h3Match[1].trim();
+        // Extract the effect type (e.g., "Affliction" from "Affliction: Affliction 20")
+        const effectType = fullEffectName.split(':')[0].trim();
+        
+        // Find the corresponding section in the notes
+        const sections = notes.split(/<h3>/i);
+        for (let i = 1; i < sections.length; i++) {
+          const section = sections[i];
+          const sectionMatch = section.match(/^([^<]+)</);
+          if (sectionMatch && sectionMatch[1].trim().includes(searchName)) {
+            // Split into paragraphs and get the data paragraph (second one)
+            const paragraphs = section.split('</p>').map(p => p.replace(/<[^>]*>/g, '').trim()).filter(p => p.length > 0);
+            if (paragraphs.length >= 2) {
+              return paragraphs[1]; // Return the data paragraph
+            }
           }
+        }
+      }
+    }
+    
+    // If no H3 tags found, look for effect patterns in paragraph content
+    const paragraphMatches = notes.matchAll(/<p>([\s\S]*?)<\/p>/g);
+    
+    for (const pMatch of paragraphMatches) {
+      const pContent = pMatch[1].trim();
+      
+      // Try each search name
+      for (const searchName of searchNames) {
+        // Pattern: "Effect Type: Effect Name Number" (e.g., "Damage: Strength-based Damage 13")
+        const effectPattern = new RegExp(`(?:<br>)?(${searchName}):\\s*([A-Za-z\\s\\-]+)\\s+(\\d+)(?:\\s*\\([^)]*\\))?`, 'i');
+        const effectMatch = pContent.match(effectPattern);
+        
+        if (effectMatch) {
+          // Return the rest of the paragraph content after the effect pattern
+          const afterEffect = pContent.substring(effectMatch.index + effectMatch[0].length);
+          return afterEffect.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         }
       }
     }
@@ -1030,13 +1546,20 @@
     const isShiftClick = event.data.originalEvent.shiftKey;
     const isAreaAttack = targetingAttack.area && targetingAttack.area.has;
     
-    // If shift or alt click on a token, let the original system handle it
-    if ((isShiftClick || isAltClick) && clickedToken) {
+    // Handle Alt+Click - let the game handle targeting
+    if (isAltClick && clickedToken) {
+      // Let the game's built-in Alt+Click handle the targeting
+      // We'll show feedback via the target change events instead
+      return;
+    }
+    
+    // If shift click on a token, let the original system handle it
+    if (isShiftClick && clickedToken) {
       // Exit targeting mode first
       exitTargetingMode(false, false);
       
       // Let the original click event propagate to the token
-      // This will trigger the normal shift/alt click dialogs
+      // This will trigger the normal shift click dialogs
       return;
     }
     
@@ -1048,24 +1571,25 @@
       const inRange = isInRange(distance, range);
       
       if (!inRange) {
-        ui.notifications.warn(`Target location is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
-      }
+          ui.notifications.warn(`Target location is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
+        }
         // Store values before clearing targeting mode
-      const attackToken = targetingToken;
-      const attackData = targetingAttack;
-      
-      exitTargetingMode();
-      
-      // Ensure attacker token is controlled before attack
-      attackToken.control({ releaseOthers: true });
-      
-      // For area attacks, place template directly at click location
-      await placeTemplateDirectly(attackToken, attackData, worldPos);
-      
-      // Execute the attack after template placement
+        const attackToken = targetingToken;
+        const attackData = targetingAttack;
+        
+        exitTargetingMode();
+        
+        // Ensure attacker token is controlled before attack
+        attackToken.control({ releaseOthers: true });
+        
+        // For area attacks, place template directly at click location
+        await placeTemplateDirectly(attackToken, attackData, worldPos);
+        
+        // Execute the attack after template placement
         await executeAttack(attackToken, attackData);
       
-    } else if (clickedToken && clickedToken !== targetingToken) {
+    } 
+    else if (clickedToken && clickedToken !== targetingToken) {
       // Handle single-target attacks on other tokens
       const squares = canvas.grid.getDirectPath([targetingToken.center, clickedToken.center]).length - 1;
       const distance = squares * canvas.grid.distance;
@@ -1084,11 +1608,10 @@
         } else {
           ui.notifications.info(`${clickedToken.name} is already targeted.`);
         }
-      } else  {
-        if(!inRange) {
+      } else {
+        if (!inRange) {
           ui.notifications.warn(`${clickedToken.name} is out of range (${Math.round(distance / 5) * 5}ft > ${range}ft).`);
-        }
-      
+        } 
         // Regular click: Add target and attack (preserve existing Alt+clicked targets)
         const currentTargets = Array.from(game.user.targets);
         const targetIds = currentTargets.map(t => t.id);
@@ -1139,7 +1662,18 @@
         executeAttack(attackToken, attackData);
         exitTargetingMode(false, false); // Don't clear targets, don't show cancel message
       }
-    }
+        } else {
+          // Clicked on empty space (no token) - execute normal attack
+          const attackToken = targetingToken;
+          const attackData = targetingAttack;
+          
+          exitTargetingMode(false, false); // Don't clear targets, don't show cancel message
+          
+          // Ensure attacker token is controlled for single-target attacks
+          attackToken.control({ releaseOthers: true });
+          
+          executeAttack(attackToken, attackData);
+        }
   }
 
   /**
@@ -1680,34 +2214,9 @@
   }
 
   function calculateOutOfCombatSpeedFromRank(powerLevel) {
-    // MM3E Measures table - distance values (feet per 4 seconds)
-    const distanceTable = {
-      "-5": 0.5, "-4": 1, "-3": 3, "-2": 6, "-1": 15, "0": 30,
-      "1": 60, "2": 120, "3": 250, "4": 500, "5": 1000, "6": 2000,
-      "7": 4000, "8": 8000, "9": 16000, "10": 32000, "11": 64000,
-      "12": 125000, "13": 250000, "14": 500000, "15": 1000000,
-      "16": 2000000, "17": 4000000, "18": 8000000, "19": 16000000,
-      "20": 32000000, "21": 64000000, "22": 125000000, "23": 250000000,
-      "24": 500000000, "25": 1000000000, "26": 2000000000, "27": 4000000000,
-      "28": 8000000000, "29": 16000000000, "30": 32000000000
-    };
-    
-    let feetPer4Seconds;
-    
-    if (powerLevel <= 30) {
-      feetPer4Seconds = distanceTable[powerLevel] || 0;
-    } else {
-      // For ranks above 30, double the previous value for each rank
-      feetPer4Seconds = distanceTable[30];
-      for (let i = 30; i < powerLevel; i++) {
-        feetPer4Seconds = feetPer4Seconds * 2;
-      }
-    }
-    
-    // Convert from feet per 4 seconds to miles per hour
-    // 4 seconds = 1/900 of an hour (3600 seconds / 4 = 900)
-    // So multiply by 900 to get feet per hour, then divide by 5280 to get miles per hour
-    const milesPerHour = (feetPer4Seconds * 900) / 5280;
+    // Use the tactical speed calculation (feet per round/6 seconds)
+    const feetPerRound = calculateTacticalSpeedFromRank(powerLevel);
+    const milesPerHour = (feetPerRound * 600) / 5280;
     
     return milesPerHour;
   }
@@ -1838,16 +2347,28 @@
     for (let movePower of movementPowers) {
       const newKey =movePower.type.toLowerCase();
       
-      // Calculate speeds using the rank table 
+      // Calculate speeds based on mode
       const rank = movePower.rank;
-      const perRoundFeet = calculateTacticalSpeedFromRank(rank); // Tactical movement in feet per round
-
-      // Out-of-combat speed calculation (already returns miles per hour) round to  decimal places only if less than 1
-      let  mphValue = calculateOutOfCombatSpeedFromRank(rank);
-      if (mphValue < 1) {
-        mphValue = mphValue.toFixed(1);
+      let perRoundFeet, mphValue;
+      
+      if (isRAWMode()) {
+        // RAW mode: Use the speed table (6 seconds = 1 turn)
+        // Get numeric feet for perRoundFeet
+        perRoundFeet = getSpeedFromTable(rank, true);
+        
+    
+        const feetPerTurn = perRoundFeet;
+        const mph = (feetPerTurn * 600) / 5280;
+        
       } else {
-        mphValue = mphValue.toFixed(0);
+        // Tactical mode: Use existing calculation
+        perRoundFeet = calculateTacticalSpeedFromRank(rank); // Tactical movement in feet per round
+
+        // Out-of-combat speed calculation (already returns miles per hour) -
+        let outOfCombatRoundFeet = getSpeedFromTable(rank, true);
+       
+        const mph = (outOfCombatRoundFeet * 600) / 5280;
+        mphValue = mph .toFixed(0);
       }
 
       
@@ -2116,6 +2637,30 @@
         
       }
     }
+
+    // Iterate over advantages to add luck property
+    let characterTalents = actor.items.filter(item => item.type === "talent");
+    if (characterTalents) {
+      for (let talent of characterTalents) {
+        if (talent.name && talent.name.toLowerCase().includes("luck")) {
+          // Parse luck value from name (e.g., "Luck 4" -> 4)
+          let luckValue = 1; // default
+          const luckMatch = talent.name.match(/luck\s+(\d+)/i);
+          if (luckMatch) {
+            luckValue = parseInt(luckMatch[1]);
+          } else if (talent.system.rang) {
+            luckValue = talent.system.rang;
+          }
+          
+          // Add luck property to actor flags
+          let updates = {};
+          updates["flags.mm3e-better-attacks.luck"] = luckValue;
+          await actor.update(updates);
+          console.log(`Added luck property: ${luckValue} to ${actor.name}`);
+          break; // Only add once
+        }
+      }
+    }
       
   }
   window.CreateAttacksFromPowers = CreateAttacksFromPowers;
@@ -2180,31 +2725,40 @@
 
   function getSaveFromResistance(matchingPower, resistance)
   {
-    //first check notes for "Resisted by: <resistance>"
+    const originalResistance = resistance;
     const notes = matchingPower.system.notes;
+    let foundInNotes = false;
+    
+    //first check notes for "Resisted by: <resistance>"
     const regex = /Resisted by: ([^,]+)/;
     let match = notes.match(regex);
     if(match){
       resistance = match[1];
+      foundInNotes = true;
     }
-    //also check notes for "Alternate Resistance: <resistance>"
+    
+    //also check notes for "Alternate Resistance: <resistance>" - this takes priority over extras
     const regex2 = /Alternate Resistance: ([^,]+)/;
     match = notes.match(regex2);
     if(match){
       resistance = match[1];
+      foundInNotes = true;
     }
-    //then check extras for "Alternate Resistance: <resistance> as this trumps Resisted by:" 
-    for (const key in matchingPower.system.extras) {
-            const item =  matchingPower.system.extras[key];
-      const regex = /Alternate Resistance: ([^,]+)/;
-            if (item.name && item.name.includes("Alternate Resistance"))  {
-                match = item.name.match(regex);
-          if(match){
-            resistance = match[1]
+    
+    //only check extras for "Alternate Resistance: <resistance>" if nothing was found in notes
+    if (!foundInNotes) {
+      for (const key in matchingPower.system.extras) {
+              const item =  matchingPower.system.extras[key];
+        const regex = /Alternate Resistance: ([^,]+)/;
+              if (item.name && item.name.includes("Alternate Resistance"))  {
+                  match = item.name.match(regex);
+            if(match){
+              resistance = match[1]
+            }
           }
+          
         }
-        
-      }
+    }
     // Convert resistance to lowercase for comparison
     const resistanceLower = resistance.toLowerCase();
     
@@ -2222,7 +2776,7 @@
       'agility': 'agilite',
       'dexterity': 'dexterite',
       'fighting': 'combativite',
-      'intellect': 'intelligence',
+       'intelligence' : 'intelligence',
       'awareness': 'sensibilite',
       'presence': 'presence'
     };
@@ -2231,6 +2785,72 @@
   }
 
 
+  /**
+   * Check for Inaccurate flaw in power and return the total attack penalty
+   * @param {Object} matchingPower - The power to check for Inaccurate
+   * @returns {number} - The total attack penalty (positive number, e.g., 12 for -12)
+   */
+  function getInaccuratePenalty(matchingPower) {
+    const notes = matchingPower.system.notes;
+    let totalPenalty = 0;
+    let foundInNotes = false;
+    
+    // First check notes for "Inaccurate X: -Y" pattern
+    const inaccurateRegex = /Inaccurate\s+(\d+):\s*-(\d+)/gi;
+    let match;
+    if ((match = inaccurateRegex.exec(notes)) !== null) {
+      const level = parseInt(match[1], 10);
+      const penalty = parseInt(match[2], 10);
+      // Verify it's -2 per level, use the penalty value directly if it matches expected calculation
+      if (penalty === level * 2) {
+        totalPenalty += penalty;
+        foundInNotes = true;
+      }
+    }
+    
+    // Also check for "Inaccurate X" pattern without explicit penalty (calculate -2 per level)
+    if (!foundInNotes) {
+      const inaccurateRegex2 = /Inaccurate\s+(\d+)/gi;
+      while ((match = inaccurateRegex2.exec(notes)) !== null) {
+        const level = parseInt(match[1], 10);
+        totalPenalty += level * 2; // -2 per level
+        foundInNotes = true;
+      }
+    }
+    
+    // Only check extras/flaws for "Inaccurate" if nothing was found in notes
+    if (!foundInNotes) {
+      // Check extras (this might be flaws, but checking extras for consistency with existing pattern)
+      for (const key in matchingPower.system.extras) {
+        const item = matchingPower.system.extras[key];
+        if (item.name && item.name.includes("Inaccurate")) {
+          const regex = /Inaccurate\s+(\d+)/i;
+          const match = item.name.match(regex);
+          if (match) {
+            const level = parseInt(match[1], 10);
+            totalPenalty += level * 2; // -2 per level
+          }
+        }
+      }
+      
+      // Also check flaws if they exist as a separate property
+      if (matchingPower.system.flaws) {
+        for (const key in matchingPower.system.flaws) {
+          const item = matchingPower.system.flaws[key];
+          if (item.name && item.name.includes("Inaccurate")) {
+            const regex = /Inaccurate\s+(\d+)/i;
+            const match = item.name.match(regex);
+            if (match) {
+              const level = parseInt(match[1], 10);
+              totalPenalty += level * 2; // -2 per level
+            }
+          }
+        }
+      }
+    }
+    
+    return totalPenalty;
+  }
 
   async function createAttackDetailsFromPower( matchingPower, actor)    { 
     
@@ -2240,11 +2860,21 @@
       effectName = matchingPower.name
     }
     
+    // Skip creating attacks for power lifting effects (not actual attacks)
+    const powerLiftingPattern = /power\s*-?\s*lifting/i;
+    if (powerLiftingPattern.test(effectName) || 
+        powerLiftingPattern.test(matchingPower.name) || 
+        powerLiftingPattern.test(matchingPower.system.notes || '')) {
+      console.log(`Skipping power lifting effect: ${matchingPower.name}`);
+      return;
+    }
+    
     // Check if this power has multiple effects in notes field
+    let combinedText = "";
     const multipleEffects = parseMultipleEffectsFromNotes(matchingPower);
     if (multipleEffects.length > 0) {
       // Build combined text description for all effects
-      let combinedText = "";
+      
       multipleEffects.forEach((effect, index) => {
         const effectNote = getEffectNotesForEffectName(matchingPower.system.notes, effect.name);
         if (effectNote) {
@@ -2267,10 +2897,27 @@
     }
     let powerConfig = POWERS_CONFIG.find(power => effectName.toLowerCase().includes(power.name.toLowerCase()));
     
+    // Check if this power has an "Attack" or "Multiattack" extra (either in extras or notes)
+    const hasAttackExtra = checkForAttackExtra(matchingPower);
+    const hasMultiattackExtra = checkForMultiattackExtra(matchingPower);
+    
     if(!powerConfig && linkNextPower==true)
     {
       linkNextPower = false;
     }
+    
+    // If no standard power config found but has Attack extra, create an "other" type attack
+    if (!powerConfig && hasAttackExtra) {
+      await createAttackFromExtra(matchingPower, actor, "Attack");
+      return;
+    }
+    
+    // If no standard power config found but has Multiattack extra, create an "other" type attack
+    if (!powerConfig && hasMultiattackExtra) {
+      await createAttackFromExtra(matchingPower, actor, "Multiattack");
+      return;
+    }
+    
     if(powerConfig){
       let save= getSaveFromResistance(matchingPower, powerConfig.resistance);
       let type = getTypeFromPower(matchingPower, powerConfig);
@@ -2297,9 +2944,256 @@
       }
 
     
-      await createAttack(matchingPower.name, actor, matchingPower, type, save, 20, powerConfig.attackType, combatSkill, afflictionResults, powerConfig);
+      // Calculate critical value based on Dangerous/Improved Critical extras
+      const criticalValue = getCriticalFromPower(matchingPower);
+      const critique = criticalValue > 0 ? 20 - criticalValue : 20;
+      
+      await createAttack(matchingPower.name, actor, matchingPower, type, save, critique, powerConfig.attackType, combatSkill, afflictionResults, powerConfig);
     await new Promise(resolve => setTimeout(resolve, 1000));
     }
+  }
+
+  /**
+   * Checks if a power has an "Attack" extra in its extras or notes
+   * @param {Object} power - The power to check
+   * @returns {boolean} - True if the power has an Attack extra
+   */
+  function checkForAttackExtra(power) {
+    // Check extras for actual Attack extra (not just any mention of "attack")
+    if (power.system.extras) {
+      for (const key in power.system.extras) {
+        const extra = power.system.extras[key];
+        if (extra.name) {
+          const extraName = extra.name.toLowerCase();
+          // Look for specific Attack extra patterns
+          if (extraName.startsWith('attack') || 
+              extraName.includes('attack:') || 
+              extraName.includes('attack (')) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    // Check flaws (sometimes Attack is listed as a flaw)
+    if (power.system.defauts) {
+      for (const key in power.system.defauts) {
+        const flaw = power.system.defauts[key];
+        if (flaw.name) {
+          const flawName = flaw.name.toLowerCase();
+          // Look for specific Attack extra patterns
+          if (flawName.startsWith('attack') || 
+              flawName.includes('attack:') || 
+              flawName.includes('attack (')) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    // Check notes for specific Attack patterns (not just any mention of "attack")
+    if (power.system.notes) {
+      const notes = power.system.notes.toLowerCase();
+      // Look for specific patterns that indicate an Attack extra
+      if ((notes.includes('attack:') || 
+           notes.includes('attack vs') || 
+           notes.includes('attack (')) && 
+          !notes.includes('no attack') && 
+          !notes.includes('not an attack')) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Checks if a power has a "Multiattack" extra in its extras or notes
+   * @param {Object} power - The power to check
+   * @returns {boolean} - True if the power has a Multiattack extra
+   */
+  function checkForMultiattackExtra(power) {
+    // Check extras
+    if (power.system.extras) {
+      for (const key in power.system.extras) {
+        const extra = power.system.extras[key];
+        if (extra.name && extra.name.toLowerCase().includes('multiattack')) {
+          return true;
+        }
+      }
+    }
+    
+    // Check flaws (sometimes Multiattack is listed as a flaw)
+    if (power.system.defauts) {
+      for (const key in power.system.defauts) {
+        const flaw = power.system.defauts[key];
+        if (flaw.name && flaw.name.toLowerCase().includes('multiattack')) {
+          return true;
+        }
+      }
+    }
+    
+    // Check notes for "Multiattack" keyword
+    if (power.system.notes) {
+      const notes = power.system.notes.toLowerCase();
+      if (notes.includes('multiattack')) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Creates an attack from a power with an Attack extra
+   * @param {Object} power - The power with Attack extra
+   * @param {Actor} actor - The actor
+   * @param {string} extraType - The type of extra ("Attack" or "Multiattack")
+   */
+  async function createAttackFromExtra(power, actor, extraType) {
+    // Determine the resistance type from the Attack extra
+    let resistance = "volonte"; // Default resistance (French for Will)
+    let resistanceFound = false; // Track if we found a resistance type
+    
+    // Check notes for resistance type FIRST (more specific than extras)
+    if (power.system.notes) {
+      const notes = power.system.notes;
+      
+      // Look for patterns like "Attack vs Will", "Attack: Will", "vs Will", "Resisted by: Will"
+      const resistancePatterns = [
+        /Attack\s*(?:\([^)]+\))?\s*:\s*([A-Za-z]+)/i,
+        /Attack\s+vs\s+([A-Za-z]+)/i,
+        /vs\s+([A-Za-z]+)/i,
+        /Resisted\s+by:\s*([A-Za-z]+)/i
+      ];
+      
+      for (const pattern of resistancePatterns) {
+        const match = notes.match(pattern);
+        if (match) {
+          const resistanceType = match[1].trim();
+          resistanceFound = true; // Mark that we found a resistance type
+          // Map common resistance types to French system values
+          switch (resistanceType.toLowerCase()) {
+            case 'dodge':
+              resistance = "esquive";
+              break;
+            case 'will':
+              resistance = "volonte";
+              break;
+            case 'fortitude':
+              resistance = "vigueur";
+              break;
+            case 'toughness':
+              resistance = "robustesse";
+              break;
+            case 'parry':
+              resistance = "parade";
+              break;
+            case 'esquive':
+              resistance = "esquive";
+              break;
+            case 'volonte':
+              resistance = "volonte";
+              break;
+            case 'vigueur':
+              resistance = "vigueur";
+              break;
+            case 'robustesse':
+              resistance = "robustesse";
+              break;
+            case 'parade':
+              resistance = "parade";
+              break;
+            default:
+              // If it's not a standard defense, try to use it as-is
+              resistance = resistanceType;
+          }
+          break; // Found a match, stop looking
+        }
+      }
+    }
+    
+    // Check extras for resistance type (only if not found in notes)
+    if (power.system.extras && !resistanceFound) { // Only check extras if no resistance was found in notes
+      for (const key in power.system.extras) {
+        const extra = power.system.extras[key];
+        if (extra.name && extra.name.toLowerCase().includes('attack')) {
+          // Parse resistance type from Attack extra name
+          // Formats: "Attack (+self): Will", "Attack: Will", "Attack: Dodge", etc.
+          const attackMatch = extra.name.match(/Attack\s*(?:\([^)]+\))?\s*:\s*([A-Za-z]+)/i);
+          if (attackMatch) {
+            const resistanceType = attackMatch[1].trim();
+            // Map common resistance types to French system values
+            switch (resistanceType.toLowerCase()) {
+              case 'dodge':
+                resistance = "esquive";
+                break;
+              case 'will':
+                resistance = "volonte";
+                break;
+              case 'fortitude':
+                resistance = "vigueur";
+                break;
+              case 'toughness':
+                resistance = "robustesse";
+                break;
+              case 'parry':
+                resistance = "parade";
+                break;
+              case 'esquive':
+                resistance = "esquive";
+                break;
+              case 'volonte':
+                resistance = "volonte";
+                break;
+              case 'vigueur':
+                resistance = "vigueur";
+                break;
+              case 'robustesse':
+                resistance = "robustesse";
+                break;
+              case 'parade':
+                resistance = "parade";
+                break;
+              default:
+                // If it's not a standard defense, try to use it as-is
+                resistance = resistanceType;
+            }
+          }
+          break;
+        }
+      }
+    }
+    
+    // Determine attack type based on power characteristics
+    let type = "other"; // Default to "other" type
+    let isArea = getAreaFromPower(power);
+    let isRange = getRangedFromPower(power);
+    let isClose = !getRangedFromPower(power) && !isArea;
+    let isPerception = getPerceptionFromPower(power);
+    
+    if (isArea) {
+      type = "area";
+    } else if (isPerception) {
+      type = "combatperception";
+    } else if (isRange) {
+      type = "combatdistance";
+    } else if (isClose) {
+      type = "combatcontact";
+    }
+    
+    // Get combat skill if needed
+    let combatSkill = null;
+    if (type === "combatdistance" || type === "combatcontact") {
+      combatSkill = getCombatSkill(actor, power, type);
+    }
+    
+    // Calculate critical value
+    const criticalValue = getCriticalFromPower(power);
+    const critique = criticalValue > 0 ? 20 - criticalValue : 20;
+    
+    // Create the attack using the existing createAttack function
+    await createAttack(power.name, actor, power, type, resistance, critique, "other", combatSkill, null, null);
   }
 
   function getTypeFromPower(matchingPower, powerConfig){
@@ -2394,6 +3288,65 @@
             }
       }
       return false; 
+  }
+
+  function getCriticalFromPower(matchingPower){
+    // First search in notes (more reliable)
+    const notes = matchingPower.system.notes || '';
+    console.log(`Checking notes: ${notes}`);
+    
+    // Look for patterns in notes like "Dangerous 4", "Dangerous: 4", "Improved Critical 2", "Improved Critical: 2"
+    const dangerousMatch = notes.match(/Dangerous\s*:?\s*(\d+)/i);
+    const improvedMatch = notes.match(/Improved\s+Critical\s*:?\s*(\d+)/i);
+    
+    
+    if (dangerousMatch) {
+      const value = parseInt(dangerousMatch[1]);
+      console.log(`Found Dangerous ${value} in notes`);
+      return value;
+    }
+    if (improvedMatch) {
+      const value = parseInt(improvedMatch[1]);
+      console.log(`Found Improved Critical ${value} in notes`);
+      return value;
+    }
+    
+    // If no number found in notes but contains "Dangerous" or "Improved Critical", default to 1
+    if (notes.includes("Dangerous") || notes.includes("Improved Critical")) {
+      console.log(`Found critical effect in notes but no number, defaulting to 1`);
+      return 1;
+    }
+    
+    // Fallback: search in extras (less reliable)
+    for (const key in matchingPower.system.extras) {
+      const item = matchingPower.system.extras[key];
+      console.log(`Checking extra: ${item.name}`);
+      if (item.name && (item.name.includes("Dangerous") || item.name.includes("Improved Critical"))) {
+        // Look for patterns like "Dangerous 4", "Dangerous: 4", "Improved Critical 2", "Improved Critical: 2"
+        const dangerousMatch = item.name.match(/Dangerous\s*:?\s*(\d+)/i);
+        const improvedMatch = item.name.match(/Improved\s+Critical\s*:?\s*(\d+)/i);
+        
+        console.log(`Extra - Dangerous match: ${dangerousMatch}, Improved match: ${improvedMatch}`);
+        
+        if (dangerousMatch) {
+          const value = parseInt(dangerousMatch[1]);
+          console.log(`Found Dangerous ${value} in extras`);
+          return value;
+        }
+        if (improvedMatch) {
+          const value = parseInt(improvedMatch[1]);
+          console.log(`Found Improved Critical ${value} in extras`);
+          return value;
+        }
+        // If no number found but contains "Dangerous" or "Improved Critical", default to 1
+        if (item.name.includes("Dangerous") || item.name.includes("Improved Critical")) {
+          console.log(`Found critical effect in extras but no number, defaulting to 1`);
+          return 1;
+        }
+      }
+    }
+    console.log(`No critical effects found`);
+    return 0; // No critical effect found
   }
 
   function getRangedFromPower(matchingPower){
@@ -2649,9 +3602,9 @@
     let weakenRank = 0;
     
     // Check for explicit effect mentions in the description
-    const dmgMatch = description.match(/(?:damage|blast|strike|strength(?:-based)?)\s+(\d+)/i);
-    const afflictionMatch = description.match(/(?:affliction|dazzle|mind control|snare|sleep|suffocation)\s+(\d+)/i);
-    const weakenMatch = description.match(/weaken\s+(\d+)/i);
+    const dmgMatch = description.match(/(?:Strength\s+Effect|Strength[-\s]?Based\s+Damage|Strength[-\s]?Based)\s+(\d+)/i);
+    const afflictionMatch = description.match(/(?:affliction|dazzle|mind control|snare|sleep|suffocation):\s*[A-Za-z\s\-]+\s+(\d+)/i);
+    const weakenMatch = description.match(/(?:<br>)?[^:]*:\s*Weaken\s+(\d+)/i);
     
     if (dmgMatch) {
       dmgRank = parseInt(dmgMatch[1]);
@@ -2672,9 +3625,9 @@
     }
     
     return {
-      dmg: dmgRank.toString(),
-      affliction: afflictionRank.toString(),
-      weaken: weakenRank.toString()
+      dmg: dmgRank,
+      affliction: afflictionRank,
+      weaken: weakenRank
     };
   }
 
@@ -2703,8 +3656,7 @@
         'awareness': 'sensibilite',
         'presence': 'presence',
         'intelligence': 'intelligence',
-        'intellect': 'intelligence',
-        'parry': 'parade',
+
         'dodge': 'esquive',
         'fortitude': 'vigueur',
         'toughness': 'robustesse',
@@ -2911,32 +3863,27 @@
         range = 0; // Standard melee range
       }
     } else {
-      // Ranged powers (including ranged area) use power level calculation
+      // Ranged powers (including ranged area)
       defpassive = "esquive";
+      
+      // Calculate power level (may include strength bonus)
       let powerLevel = matchingPower.system.cout.rang;
+      let effectiveRank = matchingPower.system.cout.rang;
+      
       if(matchingPower.system.effetsprincipaux.includes('Strength')){
         powerLevel += actor.system.caracteristique.force.total;
+        effectiveRank += actor.system.caracteristique.force.total;
       }
-      let factor = 1;
-      if(powerLevel < 7){
-        factor = 2;
-      }
-      if(powerLevel >= 7 && powerLevel <= 9 ){
-        factor = 3;
-      }
-      if(powerLevel >= 10 && powerLevel <= 12 ){
-        factor = 4;
-      }
-      if(powerLevel >= 13 && powerLevel <= 16 ){
-        factor = 5;
-      }
-      if(powerLevel >= 17 ){
-        factor = 6;
-      }
-      range = factor * powerLevel;
+      
+      // Use helper function to calculate range based on mode (returns squares)
+      // For RAW mode, pass the effective rank (including strength bonus)
+      // For Tactical mode, pass the power level for factor calculation
+      range = calculateRange(effectiveRank, powerLevel, 'short');
     }
 
-  if(effect && effect.includes("Strength") || effect =="Unarmed")
+  if(effect && effect.includes("Strength") || effect =="Unarmed" || 
+     (matchingPower.system.effetsprincipaux && matchingPower.system.effetsprincipaux.includes("Strength")) ||
+     (matchingPower.system.notes && matchingPower.system.notes.includes("Strength-based")))
   {
     ability = "force";
     
@@ -2953,9 +3900,9 @@
       basearea:0,
       critique:critique,
       effet:matchingPower.system.cout.rang,
-      isAffliction:attackType=="affliction",
-      isDmg:attackType=="damage",
-      isWeaken:attackType=="weaken",
+      isAffliction:effectRanks.affliction > 0 || effectRanks.weaken > 0 && effectRanks.dmg > 0,
+      isDmg:effectRanks.dmg > 0,
+      isWeaken:effectRanks.weaken > 0,
       label: matchingPower.name,
       links:{ability:ability,pwr:matchingPower._id,skill: skillId, },
       mod:{atk:0, eff:0},
@@ -2994,13 +3941,19 @@
           }
       },
       settings:{
-          noatk: type=="area",
+          noatk: type=="area" || type=="combatperception",
           nocrit: false
       },
       skill:skillId,
       text: getPowerDescription(matchingPower),
       type: type,
   };
+
+  // Check for Inaccurate flaw and apply attack penalty
+  const inaccuratePenalty = getInaccuratePenalty(matchingPower);
+  if (inaccuratePenalty > 0) {
+    newAttackData.mod.atk = -inaccuratePenalty;
+  }
 
   // If the attack exists, update it; otherwise, add a new one
 
@@ -3013,7 +3966,7 @@
   let updates = {};
   if (key) {
     updates[`system.attaque.${key}`] = newAttackData;
-    await actor.update(updates);
+    await actor.update(updates);10
   } else { 
     const attacks = actor.system.attaque;
     let newAttack ={}
@@ -3031,4 +3984,1139 @@
   game.actors.set(actor._id , actor)
   return actor.system.attaque[key]
 
+  }
+
+  // Register game settings
+  Hooks.once('init', () => {
+    game.settings.register('mm3e-better-attacks', 'movementCalculationMode', {
+      name: 'Movement Calculation Mode',
+      hint: 'Choose how movement speed and range are calculated. Tactical Combat uses imported speed values and target distance. RAW uses the speed table (6 seconds per turn) and range multipliers.',
+      scope: 'world',
+      config: true,
+      type: String,
+      choices: {
+        'tactical': 'Tactical Combat Rules',
+        'raw': 'RAW - Rules as Written'
+      },
+      default: 'raw',
+      onChange: value => {
+        console.log(`Movement calculation mode changed to: ${value}`);
+      }
+    });
+    
+    // Register migration version setting
+    game.settings.register('mm3e-better-attacks', 'migrationVersion', {
+      name: 'Migration Version',
+      scope: 'world',
+      config: false,
+      type: Number,
+      default: 0
+    });
+    
+    // Add fatigue points to all actors using flags migration
+    Hooks.once('ready', async () => {
+      const migrationVersion = game.settings.get('mm3e-better-attacks', 'migrationVersion') || 0;
+      
+      if (migrationVersion < 1) {
+        console.log('Running migration: Adding fatigue points to actors using flags');
+        
+        for (const actor of game.actors) {
+          const currentFatigue = actor.getFlag('mm3e-better-attacks', 'fatiguePoints');
+          if (currentFatigue === undefined) {
+            await actor.setFlag('mm3e-better-attacks', 'fatiguePoints', 0);
+          }
+        }
+        
+        await game.settings.set('mm3e-better-attacks', 'migrationVersion', 1);
+        console.log('Migration completed: Added fatigue points flags to all actors');
+      }
+    });
+  });
+
+  // Heart and Star HUD functionality
+  Hooks.on('renderTokenHUD', (app, [html], context) => {
+    // Get the token from the app
+    const token = app.object;
+    const bar2 = html.querySelector('.attribute.bar2');
+    if (bar2 && !bar2.querySelector('.fas.fa-star')) {
+        bar2.insertAdjacentHTML('afterbegin', '<i class="fas fa-star" style="font-size: 1.5rem;color: yellow;text-shadow: 0px 0px 6px white, 1px 1px 2px red;top:10px; left:5px;-webkit-text-stroke-width: 1px;-webkit-text-stroke-color: white"></i>')
+    }
+
+    token.document.update({ displayName: CONST.TOKEN_DISPLAY_MODES.ALWAYS });
+    
+    // Check if bar2 is being shown, if not adjust it
+    if(token.document.bar1.attribute !== 'heroisme'){
+        token.document.update({
+            'bar2.attribute': 'heroisme',
+            'displayBars': CONST.TOKEN_DISPLAY_MODES.HOVER
+        })
+    }
+    
+    if(token.document.bar1.attribute !== 'blessure'){
+        token.document.update({
+            'bar1.attribute': 'blessure',
+            'displayBars': CONST.TOKEN_DISPLAY_MODES.HOVER
+        })
+    }
+  });
+
+  // Setup target change listeners for feedback messages
+  Hooks.once('ready', () => {
+    Hooks.on('targetToken', (user, token, selected) => {
+      if (user !== game.user) return; // Only for current user
+      
+      const tokenName = token.name || 'Unknown';
+      
+      if (selected) {
+        ui.notifications.info(`Added ${tokenName} to targets`);
+      } else {
+        ui.notifications.info(`Removed ${tokenName} from targets`);
+      }
+    });
+
+    // Register MeasurementCalculator globally
+    window.MeasurementCalculator = MeasurementCalculator;
+    
+    // Also register it on the game object for easier access
+    game.mm3eBetterAttacks = game.mm3eBetterAttacks || {};
+    game.mm3eBetterAttacks.MeasurementCalculator = MeasurementCalculator;
+    
+    console.log("MeasurementCalculator registered successfully");
+    console.log(`Movement calculation mode: ${game.settings.get('mm3e-better-attacks', 'movementCalculationMode')}`);
+  });
+
+
+
+  function isRAWMode() {
+    return game.settings.get('mm3e-better-attacks', 'movementCalculationMode') === 'raw';
+  }
+
+
+  function calculateRange(rank, powerLevel = null, rangeType = 'short') {
+    if (isRAWMode()) {
+      // RAW mode: rank x 5 squares for short range
+      // (Each rank = 25 feet, and 25 feet / 5 feet per square = 5 squares)
+      const multipliersInSquares = {
+        'short': 5,    // rank × 25 feet = rank × 5 squares
+        'medium': 10,  // rank × 50 feet = rank × 10 squares
+        'long': 20     // rank × 100 feet = rank × 20 squares
+      };
+      return rank * (multipliersInSquares[rangeType] || 5);
+    } else {
+      // Tactical mode: Use factor-based calculation (already in squares)
+      const level = powerLevel !== null ? powerLevel : rank;
+      let factor = 1;
+      if (level < 7) {
+        factor = 2;
+      } else if (level >= 7 && level <= 9) {
+        factor = 3;
+      } else if (level >= 10 && level <= 12) {
+        factor = 4;
+      } else if (level >= 13 && level <= 16) {
+        factor = 5;
+      } else if (level >= 17) {
+        factor = 6;
+      }
+      return factor * level;
+    }
+  }
+
+
+  function convertDistanceToFeet(distanceStr) {
+    if (!distanceStr || distanceStr === "Invalid rank") return 0;
+    
+    // Parse the distance string
+    const str = distanceStr.toLowerCase().replace(/,/g, '');
+    
+    if (str.includes('mile')) {
+      const miles = parseFloat(str);
+      return miles * 5280; // Convert miles to feet
+    } else if (str.includes('feet') || str.includes('foot')) {
+      return parseFloat(str);
+    } else if (str.includes('inches') || str.includes('inch')) {
+      const inches = parseFloat(str);
+      return inches / 12; // Convert inches to feet
+    }
+    
+    return 0;
+  }
+
+
+  function getSpeedFromTable(speedRank, asNumber = false) {
+    const table = MeasurementCalculator.MEASUREMENT_TABLE;
+    const rankIndex = table.ranks.indexOf(speedRank);
+    if (rankIndex === -1) return asNumber ? 0 : "Invalid rank";
+    
+    const distanceStr = table.distance[rankIndex];
+    
+    if (asNumber) {
+      return convertDistanceToFeet(distanceStr);
+    } else {
+      return distanceStr;
+    }
+  }
+
+  class MeasurementCalculator extends Application {
+    constructor(options = {}) {
+      super(options);
+    }
+
+    static get defaultOptions() {
+      return foundry.utils.mergeObject(super.defaultOptions, {
+        id: "measurement-calculator",
+        title: "Measurement Lookup & Calculator",
+        template: "modules/mm3e-better-attacks/templates/measurement-calculator.html",
+        width: 600,
+        height: 500,
+        resizable: true,
+        classes: ["measurement-calculator"]
+      });
+    }
+
+    static get MEASUREMENT_TABLE() {
+      return {
+        ranks: [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+        mass: ["1.5 lb.", "3 lbs.", "6 lbs.", "12 lbs.", "25 lbs.", "50 lbs.", "100 lbs.", "200 lbs.", "400 lbs.", "800 lbs.", "1,600 lbs.", "3,200 lbs.", "3 tons", "6 tons", "12 tons", "25 tons", "50 tons", "100 tons", "200 tons", "400 tons", "800 tons", "1,600 tons", "3.2 ktons", "6.4 ktons", "12.8 ktons", "25.6 ktons", "51.2 ktons", "102.4 ktons", "204.8 ktons", "409.6 ktons", "819.2 ktons", "1,638.4 ktons", "3,276.8 ktons", "6,553.6 ktons", "13,107.2 ktons", "25,000 ktons"],
+        time: ["1/8 second", "1/4 second", "1/2 second", "1 second", "2 seconds", "6 seconds", "12 seconds", "30 seconds", "1 minute", "2 minutes", "4 minutes", "8 minutes", "15 minutes", "30 minutes", "1 hour", "2 hours", "4 hours", "8 hours", "16 hours", "1 day", "2 days", "4 days", "1 week", "2 weeks", "1 month", "2 months", "4 months", "8 months", "1.5 years", "3 years", "6 years", "12 years", "25 years", "50 years", "100 years", "200 years"],
+        distance: ["6 inches", "1 foot", "2 feet", "4 feet", "8 feet", "15 feet", "30 feet", "60 feet", "120 feet", "250 feet", "500 feet", "1,000 feet", "1/2 mile", "1 mile", "2 miles", "4 miles", "8 miles", "16 miles", "30 miles", "60 miles", "120 miles", "250 miles", "500 miles", "1,000 miles", "2,000 miles", "4,000 miles", "8,000 miles", "16,000 miles", "32,000 miles", "64,000 miles", "125,000 miles", "250,000 miles", "500,000 miles", "1 million miles", "2 million miles", "4 million miles"],
+        volume: ["1/32 cft.", "1/16 cft.", "1/8 cft.", "1/4 cft.", "1/2 cft.", "1 cubic ft. (cft.)", "2 cft.", "4 cft.", "8 cft.", "15 cft.", "30 cft.", "60 cft.", "125 cft.", "250 cft.", "500 cft.", "1,000 cft.", "2,000 cft.", "4,000 cft.", "8,000 cft.", "16,000 cft.", "32,000 cft.", "64,000 cft.", "125,000 cft.", "250,000 cft.", "500,000 cft.", "1 million cft.", "2 million cft.", "4 million cft.", "8 million cft.", "15 million cft.", "30 million cft.", "60 million cft.", "125 million cft.", "250 million cft.", "500 million cft.", "1 billion cft."]
+      };
+    }
+
+    static getMeasurementValue(rank, type) {
+      const table = this.MEASUREMENT_TABLE;
+      const rankIndex = table.ranks.indexOf(rank);
+      if (rankIndex === -1) return "Invalid rank";
+      const typeMap = { 'mass': table.mass, 'time': table.time, 'distance': table.distance, 'volume': table.volume };
+      return typeMap[type] ? typeMap[type][rankIndex] : "Invalid type";
+    }
+
+    static findRankFromValue(value, type) {
+      const table = this.MEASUREMENT_TABLE;
+      const typeMap = { 'mass': table.mass, 'time': table.time, 'distance': table.distance, 'volume': table.volume };
+      const values = typeMap[type];
+      if (!values) return null;
+      
+      for (let i = 0; i < values.length; i++) {
+        if (values[i].toLowerCase().includes(value.toLowerCase())) {
+          return table.ranks[i];
+        }
+      }
+      return null;
+    }
+
+    static calculateDistance(timeRank, speedRank) { return timeRank + speedRank; }
+    static calculateTime(distanceRank, speedRank) { return distanceRank - speedRank; }
+    static calculateThrowingDistance(strengthRank, massRank) { return strengthRank - massRank; }
+
+    getData() {
+      const table = this.constructor.MEASUREMENT_TABLE;
+      return { 
+        measurementTypes: [{ value: 'mass', label: 'Mass' }, { value: 'time', label: 'Time' }, { value: 'distance', label: 'Distance' }, { value: 'volume', label: 'Volume' }],
+        timeValues: table.time.map((value, index) => ({ rank: table.ranks[index], value })),
+        distanceValues: table.distance.map((value, index) => ({ rank: table.ranks[index], value })),
+        massValues: table.mass.map((value, index) => ({ rank: table.ranks[index], value }))
+      };
+    }
+
+    activateListeners(html) {
+      super.activateListeners(html);
+      
+      html.find('#rank-input').on('input', this.onRankInput.bind(this));
+      html.find('#measurement-type').on('change', this.onMeasurementTypeChange.bind(this));
+      html.find('#time-lookup, #speed-input').on('change input', this.onDistanceCalculation.bind(this));
+      html.find('#distance-lookup, #speed-input2').on('change input', this.onTimeCalculation.bind(this));
+      html.find('#strength-input, #mass-lookup').on('input change', this.onThrowingDistanceCalculation.bind(this));
+      html.find('#reset-button').on('click', this.onReset.bind(this));
+    }
+
+
+    onRankInput(event) {
+      const rank = parseInt(event.target.value);
+      const type = this.element.find('#measurement-type').val();
+      if (!isNaN(rank) && type) {
+        const value = this.constructor.getMeasurementValue(rank, type);
+        this.element.find('#measurement-result').text(value);
+      }
+    }
+
+    onMeasurementTypeChange(event) {
+      const rank = parseInt(this.element.find('#rank-input').val());
+      const type = event.target.value;
+      
+      // Clear all previous selections
+      this.element.find('#measurement-type option').removeAttr('selected').removeClass('selected-option');
+      
+      // Set the selected option
+      this.element.find(`#measurement-type option[value="${type}"]`).attr('selected', 'selected');
+      
+      if (!isNaN(rank) && type) {
+        const value = this.constructor.getMeasurementValue(rank, type);
+        this.element.find('#measurement-result').text(value);
+      }
+    }
+
+    onDistanceCalculation(event) {
+      const timeRank = parseInt(this.element.find('#time-lookup').val());
+      const speedRank = parseInt(this.element.find('#speed-input').val());
+      if (!isNaN(timeRank) && !isNaN(speedRank)) {
+        const distanceRank = this.constructor.calculateDistance(timeRank, speedRank);
+        const distanceValue = this.constructor.getMeasurementValue(distanceRank, 'distance');
+        this.element.find('#distance-result').text(`${distanceRank} (${distanceValue})`);
+      } else {
+        this.element.find('#distance-result').text('');
+      }
+    }
+
+    onTimeCalculation(event) {
+      const distanceRank = parseInt(this.element.find('#distance-lookup').val());
+      const speedRank = parseInt(this.element.find('#speed-input2').val());
+      if (!isNaN(distanceRank) && !isNaN(speedRank)) {
+        const timeRank = this.constructor.calculateTime(distanceRank, speedRank);
+        const timeValue = this.constructor.getMeasurementValue(timeRank, 'time');
+        this.element.find('#time-result').text(`${timeRank} (${timeValue})`);
+      } else {
+        this.element.find('#time-result').text('');
+      }
+    }
+
+    onThrowingDistanceCalculation(event) {
+      const strengthRank = parseInt(this.element.find('#strength-input').val());
+      const massRank = parseInt(this.element.find('#mass-lookup').val());
+      if (!isNaN(strengthRank) && !isNaN(massRank)) {
+        const throwingDistanceRank = this.constructor.calculateThrowingDistance(strengthRank, massRank);
+        const distanceValue = this.constructor.getMeasurementValue(throwingDistanceRank, 'distance');
+        this.element.find('#throwing-distance-result').text(`${throwingDistanceRank} (${distanceValue})`);
+      } else {
+        this.element.find('#throwing-distance-result').text('');
+      }
+    }
+
+    onReset(event) {
+      this.element.find('input[type="number"]').val('');
+      this.element.find('select').val('');
+      this.element.find('.result-display').text('');
+    }
   } 
+
+/**
+ * Creates Foundry Active Effects from MM3E powers
+ * @param {Object} actor - The actor to apply effects to
+ * @param {Object} app - The actor sheet application
+ */
+async function CreateActiveEffectsFromPowers(actor, app) {
+  if (!actor) {
+    ui.notifications.error("No actor selected");
+    return;
+  }
+
+  try {
+    ui.notifications.info("Creating Active Effects from powers...");
+    
+    // Get actual Foundry item documents instead of raw data
+    const powerItems = actor.items.filter(item => item.type === 'pouvoir');
+    let powersUpdated = 0;
+    
+    for (let power of powerItems) {
+      let linkedPower = actor.pwrLink[power._id];
+      if (linkedPower && linkedPower.length > 0) {
+        // Power has linked powers - process those instead of the main power
+        for (let key = 0; key < linkedPower.length; key++) {
+          let childPowerData = linkedPower[key];
+          // Get the actual Foundry document for the linked power
+          const childPower = powerItems.find(item => item._id === childPowerData._id);
+          if (childPower) {
+            const updated = await addActiveEffectsAsVariants(childPower, actor);
+            if (updated) powersUpdated++;
+          }
+        }
+      } else {
+        // Power has no linked powers - check the main power itself
+        const updated = await addActiveEffectsAsVariants(power, actor);
+        if (updated) powersUpdated++;
+      }
+    }
+    
+    if (powersUpdated === 0) {
+      ui.notifications.info("No compatible effects found in powers");
+      return;
+    }
+    
+    ui.notifications.info(`Added Active Effects to ${powersUpdated} powers`);
+    
+    // Refresh the actor sheet to show new effects
+    app.render();
+    
+  } catch (error) {
+    console.error("Error creating Active Effects from powers:", error);
+    ui.notifications.error("Failed to create Active Effects from powers");
+  }
+}
+
+/**
+ * Adds Active Effects as variants to a power (like the MM3E model)
+ * @param {Object} power - The power to add variants to
+ * @param {Object} actor - The actor (for context)
+ * @returns {boolean} - Whether the power was updated
+ */
+async function addActiveEffectsAsVariants(power, actor) {
+  try {
+    const traitBonuses = await extractActiveEffectsFromPower(power, actor);
+    if (traitBonuses.length === 0) return false;
+    
+    console.log(`=== Processing Power: ${power.name} ===`);
+    console.log(`Found ${traitBonuses.length} trait bonuses:`, traitBonuses);
+    
+    const variantId = "e1";
+    const variantName = power.name;
+    
+    // Check if there's already an Active Effect with the same name
+    const existingEffect = power.effects.find(effect => effect.name === variantName);
+    
+    if (existingEffect) {
+      console.log(`Found existing Active Effect "${variantName}", deleting and recreating`);
+      
+      // Delete existing effect from power
+      await power.deleteEmbeddedDocuments('ActiveEffect', [existingEffect.id]);
+      
+      // Also delete from actor if it exists there
+      const powerActor = power.actor;
+      if (powerActor !== null) {
+        const actorEffect = powerActor.effects.find(effect => effect.name === variantName);
+        if (actorEffect) {
+          await powerActor.deleteEmbeddedDocuments('ActiveEffect', [actorEffect.id]);
+        }
+      }
+      
+      console.log(`Deleted existing Active Effect for ${power.name}`);
+    }
+    
+    // Create new effect (either after deletion or if none existed)
+    console.log(`Creating new Active Effect for ${power.name}`);
+    
+    // Delete existing variants if they exist
+    const existingVariants = power.system.listEffectsVariantes || {};
+    if (Object.keys(existingVariants).length > 0) {
+      console.log(`Deleting existing variants for ${power.name}`);
+      delete power.system.listEffectsVariantes;
+    }
+    
+    // Convert trait bonuses to Foundry changes using MM3E format
+    const changes = [];
+    for (const bonus of traitBonuses) {
+      const traitKey = mapSystemTraitToPath(bonus.trait);
+      if (traitKey) {
+        changes.push({
+          key: traitKey,
+          mode: 2, // ADD mode
+          priority: null,
+          value: bonus.bonus.toString()
+        });
+        console.log(`Added ${bonus.trait} +${bonus.bonus} to ${traitKey}`);
+      }
+    }
+    
+    console.log(`Created changes for ${power.name} with ${changes.length} total changes:`, changes);
+    
+    // Update the power with variant data first
+    const updateData = {
+      "system.listEffectsVariantes": {
+        [variantId]: variantName
+      },
+      "system.effectsVarianteSelected": variantId
+    };
+    
+    await power.update(updateData);
+    
+    // Use MM3E's createEffectsWithChanges function
+    let updateItemEffects = {
+      name: variantName,
+      flags: {
+        'mutants-and-masterminds-3e': {
+          variante: variantId
+        }
+      },
+      icon: '',
+      changes: changes,
+      parent: power,
+      disabled: true
+    };
+
+    await power.createEmbeddedDocuments('ActiveEffect', [updateItemEffects]);
+
+    // Also create on actor for FoundryVTT v12 compatibility
+    const powerActor = power.actor;
+    if (powerActor !== null) {
+      let updateActorEffects = {
+        name: variantName,
+        flags: {
+          'mutants-and-masterminds-3e': {
+            variante: variantId
+          }
+        },
+        icon: '',
+        changes: changes,
+        origin: `Actor.${powerActor._id}.Item.${power._id}`,
+        disabled: true
+      };
+
+      await powerActor.createEmbeddedDocuments('ActiveEffect', [updateActorEffects]);
+    }
+    console.log(`✅ Successfully added Active Effects to power: ${power.name}`);
+    console.log(`📊 Effects added to ${power.name}:`, traitBonuses.map(b => `${b.trait} +${b.bonus}`).join(', '));
+    return true;
+    
+  } catch (error) {
+    console.error(`Error adding variants to power ${power.name}:`, error);
+    return false;
+  }
+}
+
+async function extractActiveEffectsFromPower(power, actor) {
+  const effects = [];
+  
+  try {
+    console.log(`🔍 Analyzing power: ${power.name}`);
+    console.log(`📝 Notes: ${power.system.notes}`);
+    console.log(`⚡ Effetsprincipaux: ${power.system.effetsprincipaux}`);
+    
+    // Step 1: Look for enhancement keywords in notes, effetsprincipaux, then name
+    const enhancementKeywords = ['enhanced ability', 'enhanced trait', 'enhanced', 'protection'];
+    let foundEnhancement = false;
+    let searchText = '';
+    
+    // Check notes first
+    if (power.system.notes) {
+      searchText = power.system.notes.toLowerCase();
+      console.log(`🔍 Checking notes: "${searchText}"`);
+      for (const keyword of enhancementKeywords) {
+        if (searchText.includes(keyword)) {
+          console.log(`✅ Found enhancement keyword "${keyword}" in notes`);
+          foundEnhancement = true;
+          break;
+        }
+      }
+    }
+    
+    // Check effetsprincipaux if no enhancement found in notes
+    if (!foundEnhancement && power.system.effetsprincipaux) {
+      searchText = power.system.effetsprincipaux.toLowerCase();
+      console.log(`🔍 Checking effetsprincipaux: "${searchText}"`);
+      for (const keyword of enhancementKeywords) {
+        if (searchText.includes(keyword)) {
+          console.log(`✅ Found enhancement keyword "${keyword}" in effetsprincipaux`);
+          foundEnhancement = true;
+          break;
+        }
+      }
+    }
+    
+    // Check power name if no enhancement found yet
+    if (!foundEnhancement) {
+      searchText = power.name.toLowerCase();
+      console.log(`🔍 Checking power name: "${searchText}"`);
+      for (const keyword of enhancementKeywords) {
+        if (searchText.includes(keyword)) {
+          console.log(`✅ Found enhancement keyword "${keyword}" in power name`);
+          foundEnhancement = true;
+          break;
+        }
+      }
+    }
+    
+    if (!foundEnhancement) {
+      console.log(`❌ No enhancement keywords found in power: ${power.name}`);
+      return effects; // No enhancement found
+    }
+    
+    // Step 2: Extract trait bonuses from all sources
+    const traitBonuses = [];
+    
+    // Search in notes
+    if (power.system.notes) {
+      const notesBonuses = extractTraitBonusesFromText(power.system.notes);
+      traitBonuses.push(...notesBonuses);
+    }
+    
+    // Search in effetsprincipaux
+    if (power.system.effetsprincipaux) {
+      const primaryBonuses = extractTraitBonusesFromText(power.system.effetsprincipaux);
+      traitBonuses.push(...primaryBonuses);
+    }
+    
+    // Search in power name
+    const nameBonuses = extractTraitBonusesFromText(power.name);
+    traitBonuses.push(...nameBonuses);
+    
+    // Step 3: Create effect objects
+    for (const bonus of traitBonuses) {
+      effects.push({
+        trait: bonus.trait,
+        bonus: bonus.bonus
+      });
+    }
+    
+  } catch (error) {
+    console.error(`Error extracting effects from power ${power.name}:`, error);
+  }
+  
+  return effects;
+}
+
+function extractTraitBonusesFromText(text) {
+  const bonuses = [];
+  
+  if (!text) return bonuses;
+  
+  // Handle Protection effect type
+  if (text.toLowerCase().includes('protection')) {
+    const match = text.match(/protection\s+(\d+)/i);
+    if (match) {
+      bonuses.push({
+        trait: "toughness",
+        bonus: parseInt(match[1])
+      });
+      return bonuses;
+    }
+  }
+  
+  // Look for patterns like "Strength +5", "Agility 3", "Toughness -2", etc.
+  const patterns = [
+    // Pattern: "TraitName +Number" or "TraitName -Number" - capture the first number before any brackets
+    /(\w+)\s*([+-]?\d+)(?=\s*\([^)]*\)|,|\s|$)/gi
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const traitName = match[1].trim();
+      const bonusValue = parseInt(match[2]);
+      
+      // Map trait name to system name
+      const mappedTrait = mapTraitNameToSystem(traitName);
+      if (mappedTrait && bonusValue !== 0) { // Allow negative values too
+        bonuses.push({
+          trait: mappedTrait,
+          bonus: bonusValue
+        });
+      }
+    }
+  }
+  
+  return bonuses;
+}
+
+function parseEffectsFromField(effectText, power = null) {
+  if (!effectText) return [];
+  
+  const effects = [];
+  
+  // Look for actual MM3E effect patterns that exist in the system
+  const patterns = [
+    { name: "Enhanced Trait", regex: /enhanced\s+(\w+)\s+(\d+(?:\.\d+)?)/i, value: 2 },
+    { name: "Enhanced Ability", regex: /enhanced\s+ability\s+(\d+(?:\.\d+)?)/i, value: 1 },
+    { name: "Protection", regex: /protection\s+(\d+(?:\.\d+)?)/i, value: 1 },
+    { name: "Enhanced Trait", regex: /enhanced\s+trait/i, value: 0 } // Generic Enhanced Trait without specific trait
+  ];
+  
+  for (const pattern of patterns) {
+    const match = effectText.match(pattern.regex);
+    if (match) {
+      // Extract the rank value from the match
+      let rankValue = 1; // default
+      if (pattern.name === "Enhanced Trait" && match[2]) {
+        rankValue = parseFloat(match[2]); // Use parseFloat to handle decimals
+      } else if ((pattern.name === "Enhanced Ability" || pattern.name === "Protection") && match[1]) {
+        rankValue = parseFloat(match[1]); // Use parseFloat to handle decimals
+      }
+      
+      let effectData = {
+        name: pattern.name,
+        value: rankValue,
+        text: match[0],
+        details: match
+      };
+      
+      // If this is a generic "Enhanced Trait" and we have a power with notes, try to extract specific traits
+      if (pattern.name === "Enhanced Trait" && match[1].toLowerCase() === "trait" && power && power.system.notes) {
+        const specificTraits = extractSpecificTraitsFromNotes(power.system.notes);
+        if (specificTraits.length > 0) {
+          effectData.specificTraits = specificTraits;
+        }
+      }
+      
+      effects.push(effectData);
+    }
+  }
+  
+  return effects;
+}
+
+function extractSpecificTraitsFromNotes(notes) {
+  const traits = [];
+  
+  if (!notes) return traits;
+  
+  // Look for patterns like "Traits: Dodge +4, Perception +2, Parry +1, Acrobatics +1, Agility +2"
+  const traitsMatch = notes.match(/traits:\s*([^<]+)/i);
+  if (traitsMatch) {
+    const traitsText = traitsMatch[1];
+    
+    // Split by comma and extract trait names and bonuses
+    const traitEntries = traitsText.split(',');
+    
+    for (const entry of traitEntries) {
+      // Extract trait name and bonus value
+      // Pattern: "TraitName +Value (other stuff)"
+      const traitMatch = entry.trim().match(/(\w+)\s*\+(\d+)/);
+      if (traitMatch) {
+        const traitName = traitMatch[1].trim();
+        const bonusValue = parseInt(traitMatch[2]);
+        
+        // Map to system trait names
+        const mappedTrait = mapTraitNameToSystem(traitName);
+        if (mappedTrait) {
+          traits.push({
+            name: mappedTrait,
+            bonus: bonusValue
+          });
+        }
+      }
+    }
+  }
+  
+  return traits;
+}
+
+function mapTraitNameToSystem(traitName) {
+  const traitMap = {
+    // Characteristics
+    "strength": "strength",
+    "force": "strength", 
+    "agility": "agility",
+    "agilite": "agility",
+    "fighting": "fighting",
+    "combativite": "fighting",
+    "awareness": "awareness",
+    "vigilance": "awareness",
+    "stamina": "stamina",
+    "endurance": "stamina",
+    "intellect": "intellect",
+    "intelligence": "intellect",
+    "presence": "presence",
+    
+    // Defenses
+    "toughness": "toughness",
+    "robustesse": "toughness",
+    "dodge": "dodge",
+    "esquive": "dodge",
+    "parry": "parry",
+    "parade": "parry",
+    "fortitude": "fortitude",
+    "vigueur": "fortitude",
+    "will": "will",
+    "volonte": "will",
+    
+    // Skills
+    "acrobatics": "acrobatics",
+    "acrobaties": "acrobatics",
+    "athletics": "athletics",
+    "athletisme": "athletics",
+    "deception": "deception",
+    "tromperie": "deception",
+    "insight": "insight",
+    "intuition": "insight",
+    "intimidation": "intimidation",
+    "investigation": "investigation",
+    "enquete": "investigation",
+    "perception": "perception",
+    "persuasion": "persuasion",
+    "stealth": "stealth",
+    "discretion": "stealth",
+    "technology": "technology",
+    "technologie": "technology",
+    "treatment": "treatment",
+    "soins": "treatment",
+    "vehicles": "vehicles",
+    "vehicules": "vehicles"
+  };
+  
+  return traitMap[traitName.toLowerCase()] || null;
+}
+
+function mapSystemTraitToPath(traitName) {
+  const pathMap = {
+    // Characteristics
+    "strength": "system.caracteristique.force.bonuses",
+    "agility": "system.caracteristique.agilite.bonuses",
+    "fighting": "system.caracteristique.combativite.bonuses",
+    "awareness": "system.caracteristique.vigilance.bonuses",
+    "stamina": "system.caracteristique.endurance.bonuses",
+    "intellect": "system.caracteristique.intelligence.bonuses",
+    "presence": "system.caracteristique.presence.bonuses",
+    
+    // Defenses
+    "toughness": "system.defense.robustesse.bonuses",
+    "dodge": "system.defense.esquive.bonuses",
+    "parry": "system.defense.parade.bonuses",
+    "fortitude": "system.defense.vigueur.bonuses",
+    "will": "system.defense.volonte.bonuses",
+    
+    // Skills
+    "acrobatics": "system.competence.acrobaties.bonuses",
+    "athletics": "system.competence.athletisme.bonuses",
+    "deception": "system.competence.tromperie.bonuses",
+    "insight": "system.competence.intuition.bonuses",
+    "intimidation": "system.competence.intimidation.bonuses",
+    "investigation": "system.competence.enquete.bonuses",
+    "perception": "system.competence.perception.bonuses",
+    "persuasion": "system.competence.persuasion.bonuses",
+    "stealth": "system.competence.discretion.bonuses",
+    "technology": "system.competence.technologie.bonuses",
+    "treatment": "system.competence.soins.bonuses",
+    "vehicles": "system.competence.vehicules.bonuses"
+  };
+  
+  return pathMap[traitName.toLowerCase()] || null;
+}
+
+function extractTraitFromPowerName(powerName, power = null) {
+  if (!powerName) return null;
+  
+  // First try to extract from power name
+  const patterns = [
+    // Pattern: "Something TraitName - Enhanced Trait"
+    /(\w+)\s*-\s*enhanced\s+trait/i,
+    // Pattern: "Enhanced TraitName"
+    /enhanced\s+(\w+)/i,
+    // Pattern: "TraitName Enhancement"
+    /(\w+)\s+enhancement/i,
+    // Pattern: "TraitName Boost"
+    /(\w+)\s+boost/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = powerName.match(pattern);
+    if (match) {
+      const traitName = match[1].toLowerCase();
+      // Check if this trait name is valid
+      const mappedTrait = mapTraitNameToSystem(traitName);
+      if (mappedTrait) {
+        return mappedTrait;
+      }
+    }
+  }
+  
+  // If not found in power name, try to extract from notes
+  if (power && power.system.notes) {
+    const notes = power.system.notes;
+    
+    // Look for patterns like "Enhanced Trait: Strength" or "Enhanced Trait: Agility"
+    const notesPattern = /enhanced\s+trait:\s*(\w+)/i;
+    const notesMatch = notes.match(notesPattern);
+    if (notesMatch) {
+      const traitName = notesMatch[1].toLowerCase();
+      const mappedTrait = mapTraitNameToSystem(traitName);
+      if (mappedTrait) {
+        return mappedTrait;
+      }
+    }
+    
+    // Look for patterns like "Strength +X" in notes
+    const traitPattern = /(\w+)\s*\+\d+/i;
+    const traitMatch = notes.match(traitPattern);
+    if (traitMatch) {
+      const traitName = traitMatch[1].toLowerCase();
+      const mappedTrait = mapTraitNameToSystem(traitName);
+      if (mappedTrait) {
+        return mappedTrait;
+      }
+    }
+  }
+  
+  return null;
+}
+
+function convertMM3EEffectToChanges(mm3eEffect, power, actor) {
+  const changes = [];
+  
+  if (!mm3eEffect || !mm3eEffect.name) return changes;
+  
+  // Get the effect value - use the parsed rank if available, otherwise use power's rank
+  const effectValue = mm3eEffect.value || (power.system.cout ? power.system.cout.rang : 1);
+  
+  // Convert specific MM3E effects to Foundry changes
+  if (mm3eEffect.name.toLowerCase().includes("enhanced trait")) {
+    // Handle Enhanced Trait effects (generic or specific)
+    // Check if we have specific traits from notes first
+    if (mm3eEffect.specificTraits && mm3eEffect.specificTraits.length > 0) {
+      // Create changes for each specific trait found in notes with their individual bonus values
+      for (const traitData of mm3eEffect.specificTraits) {
+        const traitKey = mapSystemTraitToPath(traitData.name);
+        if (traitKey) {
+          changes.push({
+            key: traitKey,
+            mode: 2, // ADD
+            value: traitData.bonus, // Use the individual bonus from notes
+            priority: 20
+          });
+        }
+      }
+    } else if (mm3eEffect.details && mm3eEffect.details[1]) {
+      // Fall back to mapping based on the effect text
+      const traitName = mm3eEffect.details[1].toLowerCase();
+      const traitKey = mapSystemTraitToPath(traitName);
+      if (traitKey) {
+        changes.push({
+          key: traitKey,
+          mode: 2, // ADD
+          value: effectValue, // Use the total from effetsprincipaux
+          priority: 20
+        });
+      }
+    } else {
+      // Try to extract trait name from power name (e.g., "Goo Strength - Enhanced Trait")
+      const traitName = extractTraitFromPowerName(power.name, power);
+      if (traitName) {
+        const traitKey = mapSystemTraitToPath(traitName);
+        if (traitKey) {
+          changes.push({
+            key: traitKey,
+            mode: 2, // ADD
+            value: effectValue,
+            priority: 20
+          });
+        } else {
+          throw new Error(`Unknown trait name "${traitName}" extracted from power name "${power.name}"`);
+        }
+      } else {
+        throw new Error(`Cannot determine specific trait for generic "Enhanced Trait" in power "${power.name}". No specific traits found in notes, effects, or power name.`);
+      }
+    }
+  } else if (mm3eEffect.name.toLowerCase().includes("enhanced ability")) {
+    // Enhanced Ability can affect any ability, defense, or skill
+    // For now, store as custom data since we'd need to parse which specific ability
+    changes.push({
+      key: `flags.mm3e-better-attacks.enhancedAbility.${power.name}`,
+      mode: 5, // CUSTOM
+      value: effectValue,
+      priority: 20
+    });
+  } else if (mm3eEffect.name.toLowerCase().includes("protection")) {
+    // Protection affects Toughness
+    changes.push({
+      key: "system.defense.robustesse.bonuses",
+      mode: 2, // ADD
+      value: effectValue,
+      priority: 20
+    });
+  } else {
+    // For unknown effects, store as custom data
+    changes.push({
+      key: `flags.mm3e-better-attacks.customEffects.${mm3eEffect.name}`,
+      mode: 5, // CUSTOM
+      value: effectValue,
+      priority: 20
+    });
+  }
+  
+  return changes;
+}
+
+/**
+ * Converts MM3E effect data to Foundry Active Effect format
+ * @param {Object} mm3eEffect - The MM3E effect data
+ * @param {Object} power - The source power
+ * @param {Object} actor - The target actor
+ * @returns {Object|null} - Foundry Active Effect object or null
+ */
+function convertMM3EEffectToActiveEffect(mm3eEffect, power, actor) {
+  if (!mm3eEffect || !mm3eEffect.name) return null;
+  
+  // Create base Active Effect structure
+  const activeEffect = {
+    name: `${power.name} - ${mm3eEffect.name}`,
+    label: `${power.name} - ${mm3eEffect.name}`,  // Display name for users
+    icon: power.img || "icons/svg/aura.svg",
+    origin: null,
+    disabled: true,
+    duration: {
+      startTime: null,
+      seconds: null,
+      combat: null,
+      rounds: null,
+      turns: null,
+      startRound: null,
+      startTurn: null
+    },
+    changes: [],
+    flags: {
+      "mm3e-better-attacks": {
+        sourcePower: power._id,
+        effectType: mm3eEffect.name
+      }
+    }
+  };
+  
+  // Get the power's rank for the effect value
+  const effectValue = power.system.cout ? power.system.cout.rang : 1;
+  
+  // Convert specific MM3E effects to Foundry changes
+  switch (mm3eEffect.name.toLowerCase()) {
+    case "enhanced trait":
+      // Try to map to specific traits based on the effect text
+      if (mm3eEffect.details && mm3eEffect.details[1]) {
+        const traitName = mm3eEffect.details[1].toLowerCase();
+        
+        let traitKey = null;
+        switch (traitName) {
+          // Characteristics/Abilities
+          case "strength":
+          case "force":
+            traitKey = "system.force";
+            break;
+          case "agility":
+          case "agilite":
+            traitKey = "system.agilite";
+            break;
+          case "fighting":
+          case "combativite":
+            traitKey = "system.combativite";
+            break;
+          case "awareness":
+          case "vigilance":
+            traitKey = "system.vigilance";
+            break;
+          case "stamina":
+          case "endurance":
+            traitKey = "system.endurance";
+            break;
+          case "intellect":
+          case "intelligence":
+            traitKey = "system.intelligence";
+            break;
+          case "presence":
+          case "presence":
+            traitKey = "system.presence";
+            break;
+          
+          // Defenses
+          case "toughness":
+          case "robustesse":
+            traitKey = "system.robustesse";
+            break;
+          case "dodge":
+          case "esquive":
+            traitKey = "system.esquive";
+            break;
+          case "parry":
+          case "parade":
+            traitKey = "system.parade";
+            break;
+          case "fortitude":
+          case "vigueur":
+            traitKey = "system.vigueur";
+            break;
+          case "will":
+          case "volonte":
+            traitKey = "system.volonte";
+            break;
+          
+          // Skills (common ones that might be enhanced)
+          case "acrobatics":
+          case "acrobaties":
+            traitKey = "system.competence.acrobaties";
+            break;
+          case "athletics":
+          case "athletisme":
+            traitKey = "system.competence.athletisme";
+            break;
+          case "deception":
+          case "tromperie":
+            traitKey = "system.competence.tromperie";
+            break;
+          case "insight":
+          case "intuition":
+            traitKey = "system.competence.intuition";
+            break;
+          case "intimidation":
+          case "intimidation":
+            traitKey = "system.competence.intimidation";
+            break;
+          case "investigation":
+          case "enquete":
+            traitKey = "system.competence.enquete";
+            break;
+          case "perception":
+          case "perception":
+            traitKey = "system.competence.perception";
+            break;
+          case "persuasion":
+          case "persuasion":
+            traitKey = "system.competence.persuasion";
+            break;
+          case "stealth":
+          case "discretion":
+            traitKey = "system.competence.discretion";
+            break;
+          case "technology":
+          case "technologie":
+            traitKey = "system.competence.technologie";
+            break;
+          case "treatment":
+          case "soins":
+            traitKey = "system.competence.soins";
+            break;
+          case "vehicles":
+          case "vehicules":
+            traitKey = "system.competence.vehicules";
+            break;
+        }
+        
+        if (traitKey) {
+          activeEffect.changes.push({
+            key: traitKey,
+            mode: 2, // ADD
+            value: effectValue,
+            priority: 20
+          });
+        }
+      }
+      break;
+      
+    case "enhanced ability":
+      // Enhanced Ability can affect any ability, defense, or skill
+      // For now, store as custom data since we'd need to parse which specific ability
+      activeEffect.changes.push({
+        key: `flags.mm3e-better-attacks.enhancedAbility.${power.name}`,
+        mode: 5, // CUSTOM
+        value: effectValue,
+        priority: 20
+      });
+      break;
+      
+    case "protection":
+      // Protection affects Toughness
+      activeEffect.changes.push({
+        key: "system.robustesse",
+        mode: 2, // ADD
+        value: effectValue,
+        priority: 20
+      });
+      break;
+      
+    default:
+      // For unknown effects, store as custom data
+      activeEffect.changes.push({
+        key: `flags.mm3e-better-attacks.customEffects.${mm3eEffect.name}`,
+        mode: 5, // CUSTOM
+        value: effectValue,
+        priority: 20
+      });
+      break;
+  }
+  
+  // Only return if we have changes to apply
+  return activeEffect.changes.length > 0 ? activeEffect : null;
+}
+

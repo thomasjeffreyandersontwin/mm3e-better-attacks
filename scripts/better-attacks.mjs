@@ -294,6 +294,10 @@ function setupTokenHoverAttackMenu() {
   canvas.stage.on('mousemove', onTokenHover);
   // Use canvas stage click for attack menu
   canvas.stage.on('click', onTokenClick);
+  // Hide menus on mousedown and drag
+  canvas.stage.on('mousedown', onMouseDown);
+  canvas.stage.on('mouseup', onMouseUp);
+  canvas.stage.on('pointermove', onPointerMove);
 }
 
 function onTokenHover(event) {
@@ -479,35 +483,127 @@ function onTokenClick(event) {
   }
 }
 
+// Mouse event handlers for hiding menus on drag/mousedown
+let isMouseDown = false;
+let isDragging = false;
+let dragStartPosition = null;
+
+
+function onMouseDown(event) {
+  if (targetingMode) return; // Don't interfere with targeting mode
+  
+  isMouseDown = true;
+  dragStartPosition = { x: event.data.originalEvent.clientX, y: event.data.originalEvent.clientY };
+  
+  // Hide all menus immediately on mousedown
+  hideAllMenus();
+}
+
+function onMouseUp(event) {
+  if (targetingMode) return;
+  
+  isMouseDown = false;
+  isDragging = false;
+  dragStartPosition = null;
+}
+
+function onPointerMove(event) {
+  if (targetingMode) return;
+  
+  if (isMouseDown && dragStartPosition) {
+    const currentX = event.data.originalEvent.clientX;
+    const currentY = event.data.originalEvent.clientY;
+    const deltaX = Math.abs(currentX - dragStartPosition.x);
+    const deltaY = Math.abs(currentY - dragStartPosition.y);
+    
+    // If mouse has moved more than 5 pixels, consider it a drag
+    if (deltaX > 5 || deltaY > 5) {
+      if (!isDragging) {
+        isDragging = true;
+        // Hide all menus when dragging starts
+        hideAllMenus();
+      }
+    }
+  }
+}
+
+function hideAllMenus() {
+  // Hide all UI elements with smooth animations
+  document.querySelectorAll('.token-attack-menu').forEach(menu => {
+    menu.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => menu.remove(), 300);
+  });
+  document.querySelectorAll('.token-power-menu').forEach(menu => {
+    menu.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => menu.remove(), 300);
+  });
+  document.querySelectorAll('.token-resource-display').forEach(display => {
+    display.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => display.remove(), 300);
+  });
+  document.querySelectorAll('.token-resource-display-only').forEach(display => {
+    display.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => display.remove(), 300);
+  });
+  document.querySelectorAll('.token-action-buttons').forEach(buttons => {
+    buttons.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => buttons.remove(), 300);
+  });
+  document.querySelectorAll('.comic-page-background').forEach(background => {
+    background.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => background.remove(), 300);
+  });
+  document.querySelectorAll('.attack-details-box').forEach(details => {
+    details.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => details.remove(), 300);
+  });
+  document.querySelectorAll('.power-details-box').forEach(details => {
+    details.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => details.remove(), 300);
+  });
+  
+  // Clear any hover timeouts
+  if (hoverTimeout) {
+    clearTimeout(hoverTimeout);
+    hoverTimeout = null;
+  }
+  if (menuHideTimeout) {
+    clearTimeout(menuHideTimeout);
+    menuHideTimeout = null;
+  }
+  
+  // Reset hover state
+  currentHoveredToken = null;
+}
+
 // Global function for handling action button clicks
 window.handleActionButton = function(tokenId, actionType) {
   console.log(`Action button clicked: ${actionType} for token ${tokenId}`);
   
+  // Hide all open menus first to prevent conflicts (but keep resource display and action buttons)
+  document.querySelectorAll('.token-attack-menu').forEach(menu => menu.remove());
+  document.querySelectorAll('.token-power-menu').forEach(menu => menu.remove());
+  document.querySelectorAll('.comic-page-background').forEach(background => background.remove());
+  
   switch(actionType) {
     case 'attack':
-      // Toggle attack menu
+      // Show attack menu
       const token = canvas.tokens.get(tokenId);
       if (token) {
-        const existingMenu = document.getElementById(`token-attack-menu-${tokenId}`);
-        if (existingMenu) {
-          hideTokenAttackMenu(token);
-        } else {
-          showTokenAttackMenu(token);
-          // Don't create new panels - the resource display and action buttons are already visible
-          // The attack menu will have its own background built-in
-        }
+        // Recreate resource display and action buttons for attack menu
+        showTokenResourceDisplay(token);
+        showTokenActionButtons(token);
+        showTokenAttackMenu(token);
       }
       break;
     case 'powers':
-      // Toggle power menu
+      // Show power menu
       const powerToken = canvas.tokens.get(tokenId);
       if (powerToken) {
-        const existingMenu = document.getElementById(`token-power-menu-${tokenId}`);
-        if (existingMenu) {
-          hideTokenPowerMenu(powerToken);
-        } else {
-          showTokenPowerMenu(powerToken);
-        }
+        // Recreate resource display and action buttons for power menu
+        showTokenResourceDisplay(powerToken);
+        showTokenActionButtons(powerToken);
+        showTokenPowerMenu(powerToken);
       }
       break;
     case 'maneuvers':
@@ -1540,25 +1636,29 @@ function createComicPageBackground(token, menuHeight) {
 function hideTokenAttackMenu(token) {
   const menu = document.getElementById(`token-attack-menu-${token.id}`);
   if (menu) {
-    menu.remove();
+    menu.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => menu.remove(), 300);
   }
   
-  // Also remove the resource display for this specific token
+  // Also remove the resource display for this specific token with animation
   const resourceDisplay = document.getElementById(`token-resource-display-${token.id}`);
   if (resourceDisplay) {
-    resourceDisplay.remove();
+    resourceDisplay.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => resourceDisplay.remove(), 300);
   }
   
-  // Also remove the background panel
+  // Also remove the background panel with animation
   const backgroundPanel = document.getElementById(`token-resource-display-only-${token.id}`);
   if (backgroundPanel) {
-    backgroundPanel.remove();
+    backgroundPanel.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => backgroundPanel.remove(), 300);
   }
   
-  // Remove any details box for this token
+  // Remove any details box for this token with animation
   const detailsBox = document.getElementById(`attack-details-${token.id}`);
   if (detailsBox) {
-    detailsBox.remove();
+    detailsBox.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => detailsBox.remove(), 300);
   }
   
   // Reset the original background height for next time
@@ -1607,7 +1707,7 @@ function showTokenPowerMenu(token) {
   menu.id = `token-power-menu-${token.id}`;
   menu.className = 'token-power-menu';
   
-  // Position menu under the token (same as attack menu)
+  // Position menu with smart positioning to avoid going off-screen
   const tokenRect = token.mesh.getBounds();
   const canvasRect = canvas.app.view.getBoundingClientRect();
   
@@ -1763,6 +1863,22 @@ function showTokenPowerMenu(token) {
         updateSlider();
       });
       
+      // Add click handler to roll the power (same as character sheet dice button)
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        hideTokenPowerMenu(token);
+        // Use the MM3E system's RollMacroPwr function directly (same as executeAttack approach)
+        await game.mm3.RollMacroPwr(
+          actor._id,
+          token.scene?.id || 'null',
+          token.id || 'null',
+          power._id,
+          actor.type,
+          { altKey: false, shiftKey: false } // Default event options
+        );
+      });
+      
       // Add hover effect to button (WITH SLIDER - separate branch)
       button.addEventListener('mouseenter', () => {
         button.style.background = '#FFB347'; // Orange on hover
@@ -1835,6 +1951,22 @@ function showTokenPowerMenu(token) {
         line-height: 20px;
       `;
       
+      // Add click handler to roll the power (same as character sheet dice button)
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        hideTokenPowerMenu(token);
+        // Use the MM3E system's RollMacroPwr function directly (same as executeAttack approach)
+        await game.mm3.RollMacroPwr(
+          actor._id,
+          token.scene?.id || 'null',
+          token.id || 'null',
+          power._id,
+          actor.type,
+          { altKey: false, shiftKey: false } // Default event options
+        );
+      });
+      
       // Add hover effect (NO SLIDER - separate branch)
       button.addEventListener('mouseenter', () => {
         button.style.background = '#FFB347'; // Orange on hover
@@ -1887,19 +2019,22 @@ function showTokenPowerMenu(token) {
 function hideTokenPowerMenu(token) {
   const menu = document.getElementById(`token-power-menu-${token.id}`);
   if (menu) {
-    menu.remove();
+    menu.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => menu.remove(), 300);
   }
   
-  // Also remove the resource display for this specific token
+  // Also remove the resource display for this specific token with animation
   const resourceDisplay = document.getElementById(`token-resource-display-${token.id}`);
   if (resourceDisplay) {
-    resourceDisplay.remove();
+    resourceDisplay.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => resourceDisplay.remove(), 300);
   }
   
-  // Also remove the background panel
+  // Also remove the background panel with animation
   const backgroundPanel = document.getElementById(`token-resource-display-only-${token.id}`);
   if (backgroundPanel) {
-    backgroundPanel.remove();
+    backgroundPanel.style.animation = 'panelSpreadOut 0.3s ease-in forwards';
+    setTimeout(() => backgroundPanel.remove(), 300);
   }
   
   // Reset the original background height for next time
@@ -1969,7 +2104,7 @@ function showPowerDetailsWithSlider(token, power, button, powerRow) {
   let detailsContent = effetsprincipaux;
   if (activeEffectsText) {
     detailsContent = `${effetsprincipaux}\n${activeEffectsText}`;
-  }
+  }   
   
   detailsBox.innerHTML = `
     <div class="power-details-content">
@@ -3111,7 +3246,7 @@ async function onTargetingClick(event) {
       // Add the new target if not already targeted
       if (!targetIds.includes(clickedToken.id)) {
         game.user.targets.add(clickedToken);
-        ui.notifications.info(`${clickedToken.name} added to targets.`);
+        //ui.notifications.info(`${clickedToken.name} added to targets.`);
       } else {
         ui.notifications.info(`${clickedToken.name} is already targeted.`);
       }
@@ -3149,7 +3284,7 @@ async function onTargetingClick(event) {
       if (!targetIds.includes(clickedToken.id)) {
         targetIds.push(clickedToken.id);
         await game.user.targets.add(targetIds);
-        ui.notifications.info(`${clickedToken.name} added to targets.`);
+        //ui.notifications.info(`${clickedToken.name} added to targets.`);
       } else {
         ui.notifications.info(`${clickedToken.name} is already targeted.`);
       }
@@ -3659,6 +3794,9 @@ async  function executeAttack(attackToken, attackData) {
     actor.type,
     { altKey: false, shiftKey: false } // Default event options
   );
+
+
+  
 }
 
 //check range of attack
